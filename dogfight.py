@@ -18,11 +18,13 @@ else:
 
 # custom Type annotation
 Coordinates = NDArray[np.float64]
+Scalar = np.float64
 Vector = NDArray[np.float64]
 Radian = NDArray[np.float64]
 
 # constants
-ESC = 27
+ESC_KEY = 27
+SPACE_KEY = ' '
 PLAYER_ONE_YOKE = {
     curses.KEY_DOWN: 'up',
     curses.KEY_UP: 'down'
@@ -32,6 +34,17 @@ MARGIN = 5
 
 # set env variable so that xterm can show ACS_* curses characters
 os.environ['NCURSES_NO_UTF8_ACS'] = '1'
+
+
+@dataclass
+class Game:
+
+    arena: Arena = None
+    planes: list[Plane] = field(default_factory=list)
+    cannons: list[Projectile] = field(default_factory=list)
+
+
+GAME = Game()
 
 
 def plus_minus(a, b) -> int:
@@ -61,9 +74,9 @@ def is_touching_boundary(
     hit_x_boundary = False
 
     y, x = np.rint(coords)
-    if y == arena.upper_left[0] or y == arena.bottom_right[0]:
+    if y <= arena.upper_left[0] or y >= arena.bottom_right[0]:
         hit_y_boundary = True
-    if x == arena.upper_left[1] or x == arena.bottom_right[1]:
+    if x <= arena.upper_left[1] or x >= arena.bottom_right[1]:
         hit_x_boundary = True
 
     return hit_y_boundary, hit_x_boundary
@@ -89,6 +102,9 @@ class Arena:
         self.upper_left = np.array([self.margin, self.margin])
         self.bottom_right = np.array([h, w]) - self.margin
 
+        # draw boundary on initialisation of instance
+        self.draw()
+
     def draw(self):
 
         textpad.rectangle(
@@ -106,16 +122,16 @@ class Projectile:
 
     Planes, Machine Gun and Cannon objects inherit from Projectile
     '''
-    arena: Arena
 
     coordinates: Coordinates
-    speed: Vector
     angle_of_attack: Radian
     turning_circle: Radian
+    speed: Scalar
 
     body: str
 
-    infinite: bool = True
+    infinite: bool = False
+    for_deletion: bool = False
 
     def change_pitch(self, up: bool) -> None:
         ''''''
@@ -138,37 +154,51 @@ class Projectile:
 
         y, x = np.rint(self.coordinates)
 
-        hit_y, hit_x = is_touching_boundary(self.arena, self.coordinates)
+        hit_y, hit_x = is_touching_boundary(GAME.arena, self.coordinates)
         if self.infinite:
             if hit_y:
                 self.coordinates[0] = (
                     y +
-                    (plus_minus(self.arena.height, y) * self.arena.height) -
-                    plus_minus(self.arena.height, y)
+                    (plus_minus(GAME.arena.height, y) * GAME.arena.height) -
+                    plus_minus(GAME.arena.height, y)
                 )
             elif hit_x:
                 self.coordinates[1] = (
                     x +
-                    (plus_minus(self.arena.width, x) * self.arena.width) -
-                    plus_minus(self.arena.width, x)
+                    (plus_minus(GAME.arena.width, x) * GAME.arena.width) -
+                    plus_minus(GAME.arena.width, x)
                 )
+        else:
+            if hit_y or hit_x:
+                self.for_deletion = True
 
     def draw(self) -> None:
         '''Draw object on terminal screen'''
 
         # get reference to curses Window object and draw
-        scr = self.arena.stdscr
+        scr = GAME.arena.stdscr
 
         # clear previous render of position of object
-        if not any(is_touching_boundary(self.arena, self.coordinates)):
+        if not any(is_touching_boundary(GAME.arena, self.coordinates)):
             scr.addch(*np.rint(self.coordinates).astype(int), ' ')
 
         # move object to new position
         self.move()
 
         # render new position of object
-        if not any(is_touching_boundary(self.arena, self.coordinates)):
+        if not any(is_touching_boundary(GAME.arena, self.coordinates)):
             scr.addch(*np.rint(self.coordinates).astype(int), self.body)
+
+    def mark_for_deletion(self) -> None:
+        self.for_deletion = True
+
+
+@dataclass
+class Cannon(Projectile):
+    turning_circle: Radian = field(default=0)
+    speed: Scalar = field(default=3.0)
+
+    body: str = 'o'
 
 
 @dataclass
@@ -240,22 +270,31 @@ class Plane(Projectile):
         '''Override base draw() method to include drawing of nose'''
 
         # get reference to curses Window object and draw
-        scr = self.arena.stdscr
+        scr = GAME.arena.stdscr
 
         # clear previous render of position of plane
-        if not any(is_touching_boundary(self.arena, self.coordinates)):
+        if not any(is_touching_boundary(GAME.arena, self.coordinates)):
             scr.addch(*np.rint(self.coordinates).astype(int), ' ')
-        if not any(is_touching_boundary(self.arena, self.nose_coords)):
+        if not any(is_touching_boundary(GAME.arena, self.nose_coords)):
             scr.addch(*np.rint(self.nose_coords).astype(int), ' ')
 
         # move plane to new position
         self.move()
 
         # render new position of plane
-        if not any(is_touching_boundary(self.arena, self.coordinates)):
+        if not any(is_touching_boundary(GAME.arena, self.coordinates)):
             scr.addch(*np.rint(self.coordinates).astype(int), self.body)
-        if not any(is_touching_boundary(self.arena, self.nose_coords)):
+        if not any(is_touching_boundary(GAME.arena, self.nose_coords)):
             scr.addch(*np.rint(self.nose_coords).astype(int), self.nose)
+
+    def fire_cannon(self) -> None:
+
+        cannon = Cannon(
+            coordinates=np.copy(self.coordinates),
+            turning_circle=0,
+            angle_of_attack=np.copy(self.angle_of_attack)
+        )
+        GAME.cannons.append(cannon)
 
 
 def main(stdscr: Window):
@@ -266,14 +305,9 @@ def main(stdscr: Window):
 
     # create arena
     arena = Arena(stdscr, margin=MARGIN)
-    arena.draw()
-
-    # keep track of objets in game
-    planes = []
 
     # create plane
     plane_one = Plane(
-        arena=arena,
         coordinates=np.array(
             [arena.bottom_right[0]/2, arena.bottom_right[1]/4]
         ),
@@ -281,27 +315,32 @@ def main(stdscr: Window):
         speed=0.5,
         turning_circle=(PI * 1/8),
     )
-    plane_one.draw()
-    planes.append(plane_one)
+
+    # add references to Game instance
+    GAME.arena = arena
+    GAME.planes.append(plane_one)
 
     while True:
         key = stdscr.getch()
 
-        stdscr.addstr(0, 0, f'key pressed: {key}')
-
-        if key not in PLAYER_ONE_YOKE.keys():
-            key = -1
-
-        # move plane
-        for plane in planes:
-
-            # adjust plane position
+        # move planes
+        GAME.planes = [p for p in GAME.planes if not p.for_deletion]
+        for plane in GAME.planes:
             if key in PLAYER_ONE_YOKE.keys():
                 plane.change_pitch(PLAYER_ONE_YOKE[key] == 'up')
+            elif key == ord(SPACE_KEY):
+                plane.fire_cannon()
             plane.draw()
 
+            stdscr.addstr(0, 0, f'key pressed: {key}')
             stdscr.addstr(1, 0, f'angle of attack: {plane.angle_of_attack}')
             stdscr.addstr(2, 0, f'coordinates: {plane.coordinates}')
+            stdscr.addstr(3, 0, f'cannon in play: {len(GAME.cannons)}')
+
+        # move projectiles
+        GAME.cannons = [c for c in GAME.cannons if not c.for_deletion]
+        for cannon in GAME.cannons:
+            cannon.draw()
 
     stdscr.refresh()
 
