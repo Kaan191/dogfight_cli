@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import curses
 import os
 from curses import textpad
@@ -45,6 +47,26 @@ def resolve_direction(angle: Radian) -> Vector:
         np.round(np.cos(angle), 5),
         np.round(np.sin(angle), 5)
     ])
+
+
+def is_touching_boundary(
+    arena: Arena,
+    coords: Coordinates
+) -> tuple(bool, bool):
+    '''Returns a two-tuple of bools denoting if an object is touching
+    the y- or x-axis boundaries of the arena
+    '''
+
+    hit_y_boundary = False
+    hit_x_boundary = False
+
+    y, x = np.rint(coords)
+    if y == arena.upper_left[0] or y == arena.bottom_right[0]:
+        hit_y_boundary = True
+    if x == arena.upper_left[1] or x == arena.bottom_right[1]:
+        hit_x_boundary = True
+
+    return hit_y_boundary, hit_x_boundary
 
 
 @dataclass
@@ -114,31 +136,39 @@ class Projectile:
     def hit_boundary(self) -> None:
         '''Controls consequences of hitting Arena boundary'''
 
-        hit_y_boundary = False
-        hit_x_boundary = False
-
         y, x = np.rint(self.coordinates)
-        if y == self.arena.upper_left[0] or y == self.arena.bottom_right[0]:
-            hit_y_boundary = True
-        if x == self.arena.upper_left[1] or x == self.arena.bottom_right[1]:
-            hit_x_boundary = True
 
-        if not hit_y_boundary and not hit_x_boundary:
-            return
-
+        hit_y, hit_x = is_touching_boundary(self.arena, self.coordinates)
         if self.infinite:
-            if hit_y_boundary:
+            if hit_y:
                 self.coordinates[0] = (
                     y +
                     (plus_minus(self.arena.height, y) * self.arena.height) -
                     plus_minus(self.arena.height, y)
                 )
-            elif hit_x_boundary:
+            elif hit_x:
                 self.coordinates[1] = (
                     x +
                     (plus_minus(self.arena.width, x) * self.arena.width) -
                     plus_minus(self.arena.width, x)
                 )
+
+    def draw(self) -> None:
+        '''Draw object on terminal screen'''
+
+        # get reference to curses Window object and draw
+        scr = self.arena.stdscr
+
+        # clear previous render of position of object
+        if not any(is_touching_boundary(self.arena, self.coordinates)):
+            scr.addch(*np.rint(self.coordinates).astype(int), ' ')
+
+        # move object to new position
+        self.move()
+
+        # render new position of object
+        if not any(is_touching_boundary(self.arena, self.coordinates)):
+            scr.addch(*np.rint(self.coordinates).astype(int), self.body)
 
 
 @dataclass
@@ -165,7 +195,7 @@ class Plane(Projectile):
             np.rint(self.coordinates) +
             np.rint(resolve_direction(self.angle_of_attack))
         )
-        self.draw_nose()
+        self.render_nose()
 
     def move(self) -> None:
 
@@ -177,9 +207,9 @@ class Plane(Projectile):
             np.rint(self.coordinates) +
             np.rint(resolve_direction(self.angle_of_attack))
         )
-        self.draw_nose()
+        self.render_nose()
 
-    def draw_nose(self) -> None:
+    def render_nose(self) -> None:
         r'''
             \    |    /
         -+   x   +   x    +-  x   +   x
@@ -206,6 +236,27 @@ class Plane(Projectile):
             elif x == 1:
                 self.nose = '/'
 
+    def draw(self) -> None:
+        '''Override base draw() method to include drawing of nose'''
+
+        # get reference to curses Window object and draw
+        scr = self.arena.stdscr
+
+        # clear previous render of position of plane
+        if not any(is_touching_boundary(self.arena, self.coordinates)):
+            scr.addch(*np.rint(self.coordinates).astype(int), ' ')
+        if not any(is_touching_boundary(self.arena, self.nose_coords)):
+            scr.addch(*np.rint(self.nose_coords).astype(int), ' ')
+
+        # move plane to new position
+        self.move()
+
+        # render new position of plane
+        if not any(is_touching_boundary(self.arena, self.coordinates)):
+            scr.addch(*np.rint(self.coordinates).astype(int), self.body)
+        if not any(is_touching_boundary(self.arena, self.nose_coords)):
+            scr.addch(*np.rint(self.nose_coords).astype(int), self.nose)
+
 
 def main(stdscr: Window):
     # initial settings
@@ -217,6 +268,9 @@ def main(stdscr: Window):
     arena = Arena(stdscr, margin=MARGIN)
     arena.draw()
 
+    # keep track of objets in game
+    planes = []
+
     # create plane
     plane_one = Plane(
         arena=arena,
@@ -227,10 +281,8 @@ def main(stdscr: Window):
         speed=0.5,
         turning_circle=(PI * 1/8),
     )
-    stdscr.addch(*np.rint(plane_one.coordinates).astype(int), plane_one.body)
-    stdscr.addch(*np.rint(plane_one.nose_coords).astype(int), plane_one.nose)
-
-    planes = [plane_one]
+    plane_one.draw()
+    planes.append(plane_one)
 
     while True:
         key = stdscr.getch()
@@ -243,16 +295,10 @@ def main(stdscr: Window):
         # move plane
         for plane in planes:
 
-            # clear previous frame
-            stdscr.addch(*np.rint(plane.nose_coords).astype(int), ' ')
-            stdscr.addch(*np.rint(plane.coordinates).astype(int), ' ')
-
             # adjust plane position
             if key in PLAYER_ONE_YOKE.keys():
                 plane.change_pitch(PLAYER_ONE_YOKE[key] == 'up')
-            plane.move()
-            stdscr.addch(*np.rint(plane.nose_coords).astype(int), plane.nose)
-            stdscr.addch(*np.rint(plane.coordinates).astype(int), plane.body)
+            plane.draw()
 
             stdscr.addstr(1, 0, f'angle of attack: {plane.angle_of_attack}')
             stdscr.addstr(2, 0, f'coordinates: {plane.coordinates}')
