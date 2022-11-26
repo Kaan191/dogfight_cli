@@ -1,10 +1,24 @@
+import curses
 import os
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
+# enables static type hinting of Window object
+if TYPE_CHECKING:
+    from typings.cursestyping import _CursesWindow
+    Window = _CursesWindow
+else:
+    Window = Any
+
+
+# === custom types ===
+Scalar = np.float64
 Radian = np.float64
 Vector = NDArray[np.float64]
+Coordinates = NDArray[np.float64]
+
 
 # === arena dimensions ===
 # in order to centre the Arena, we need to calculate where
@@ -37,3 +51,9 @@ def resolve_direction(angle: Radian) -> Vector:
         np.round(np.cos(angle), 5),
         np.round(np.sin(angle), 5)
     ])
+
+
+def get_char(screen: Window, y: int, x: int) -> str:
+    char_ordinal = screen.inch(y, x)
+    char = chr(char_ordinal & curses.A_CHARTEXT)
+    return char

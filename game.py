@@ -1,24 +1,29 @@
 import curses
 import os
-from curses import textpad
 from dataclasses import dataclass, field
 from typing import List
 
-import numpy as np
-
-from dogfight import Arena, Plane, Projectile, TopBox, Window
+from dogfight import Arena, AnimatedSprite, Plane, Projectile, TopBox, Window
 from planes import BF109, P51
 
 
 # set env variable so that xterm can show ACS_* curses characters
 os.environ['NCURSES_NO_UTF8_ACS'] = '1'
 
-# constants
+# === keyboard key ordinals ===
 ESC_KEY = 27
-SPACE_KEY = ' '
-PLAYER_ONE_YOKE = {
+SPACE_KEY = 32
+
+# === yoke dictionaries ===
+P_ONE_YOKE = {
     curses.KEY_DOWN: 'up',
-    curses.KEY_UP: 'down'
+    curses.KEY_UP: 'down',
+    SPACE_KEY: 'shoot'
+}
+P_TWO_YOKE = {
+    ord('w'): 'up',
+    ord('s'): 'down',
+    ord('d'): 'shoot'
 }
 
 
@@ -26,6 +31,7 @@ PLAYER_ONE_YOKE = {
 class Game:
     planes: List[Plane] = field(default_factory=list)
     cannons: List[Projectile] = field(default_factory=list)
+    animations: List[AnimatedSprite] = field(default_factory=list)
 
 
 def main(stdscr: Window):
@@ -36,7 +42,10 @@ def main(stdscr: Window):
 
     # create Game
     game = Game()
-    game.planes = [BF109, P51]
+    game.planes = [
+        BF109(plane_id=1, yoke_dict=P_ONE_YOKE, hull_integrity=15),
+        P51(plane_id=2, yoke_dict=P_TWO_YOKE, hull_integrity=10)
+    ]
 
     # create arena
     arena = Arena(stdscr)
@@ -49,30 +58,42 @@ def main(stdscr: Window):
     while True:
         key = stdscr.getch()
 
-        # move planes
+        # === update planes ===
         game.planes = [p for p in game.planes if not p.for_deletion]
-        for i, plane in enumerate(game.planes, start=1):
-            curses.init_pair(i, plane.color, curses.COLOR_BLACK)
+        for plane in game.planes:
+            # read key and update plane state
+            plane.parse_key(key)
+            if plane.fired_cannon:
+                game.cannons.append(plane.fired_cannon.pop(0))
 
-            if key in PLAYER_ONE_YOKE.keys():
-                plane.change_pitch(PLAYER_ONE_YOKE[key] == 'up')
-            elif key == ord(SPACE_KEY):
-                game.cannons.append(plane.fire_cannon())
+            # render updated plane state
             plane.draw(stdscr)
 
+            # pass any generated animation to game instance
+            if plane.animations:
+                game.animations.extend(plane.animations)
+                plane.animations = []
+
+            # update info box
             messages = [
                 f'key pressed: {key}',
-                f'angle of attack: {round(plane.angle_of_attack / np.pi, 1)} * π',
-                f'coordinates: {plane.coordinates}',
-                f'cannon in play: {len(game.cannons)}'
+                # f'angle of attack: {round(plane.angle_of_attack / np.pi, 1)} * π',
+                f'coordinates: {plane.resolved_coords}',
+                f'cannon in play: {len(game.cannons)}',
+                f'animations: {len(plane.animations)}',
             ]
             for i, m in enumerate(messages):
                 info_box.write(m, line=i)
 
-        # move projectiles
+        # === update cannon rounds ===
         game.cannons = [c for c in game.cannons if not c.for_deletion]
         for cannon in game.cannons:
             cannon.draw(stdscr)
+
+        # === play animations ===
+        game.animations = [a for a in game.animations if not a.for_deletion]
+        for anim in game.animations:
+            anim.next_frame(stdscr)
 
         # TODO: check for hits
 

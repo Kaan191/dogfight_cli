@@ -3,27 +3,13 @@ from __future__ import annotations
 import curses
 from curses import textpad
 from dataclasses import dataclass, field
-from typing import Any, Tuple, TYPE_CHECKING
+from typing import List, Tuple
 
 import numpy as np
-from numpy.typing import NDArray
 
 import utils
-from utils import plus_minus, resolve_direction
-
-
-# enables static type hinting of Window object
-if TYPE_CHECKING:
-    from typings.cursestyping import _CursesWindow
-    Window = _CursesWindow
-else:
-    Window = Any
-
-# custom Type annotation
-Scalar = np.float64
-Radian = np.float64
-Vector = NDArray[np.float64]
-Coordinates = NDArray[np.float64]
+from utils import plus_minus, resolve_direction, Window
+from utils import Coordinates, Radian, Scalar
 
 
 @dataclass
@@ -60,6 +46,53 @@ class TopBox:
 
 
 @dataclass
+class AnimatedSprite:
+    '''
+    Define sprite art objects with a `.next_frame` method for animating
+    '''
+    coordinates: Coordinates
+    frames: list = field(default_factory=list)
+    colors: list = field(default_factory=list)
+
+    for_deletion: bool = False
+
+    @property
+    def resolved_coords(self) -> Tuple[int, int]:
+        '''
+        Converts the "real" coordinates stored as `np.float64` into
+        rounded integers to place the object on a curses `Window`
+        '''
+        y, x = np.rint(self.coordinates).astype(int)
+        return (y, x)
+
+    def next_frame(self, screen: Window) -> None:
+        '''
+        Switches sprite to next 'frame' in `.frames` list
+
+        First checks that the resolved coordinates of the newly-created
+        `AnimatedSprite` are in an empty cell. Once empty, the animation
+        is started.
+
+        Animation plays until 'frames' are exhausted.
+        '''
+
+        # if utils.get_char(screen, *self.resolved_coords) == ' ':
+        if self.frames:
+            screen.addch(*self.resolved_coords, self.frames.pop(0))
+        else:
+            screen.addch(*self.resolved_coords, ' ')
+            self.for_deletion = True
+
+
+@dataclass
+class PlaneSmoke(AnimatedSprite):
+
+    def __post_init__(self):
+        self.frames: list = list('••ooO0oo00oo••')
+        self.colors: list = list('11111111111111')
+
+
+@dataclass
 class Projectile:
     '''
     Describes any Projectile object.
@@ -74,10 +107,20 @@ class Projectile:
 
     body: str
     color: int = 0
-    color_pair: int = 0
 
     infinite: bool = False
+    animations: List[AnimatedSprite] = field(default_factory=list)
+
     for_deletion: bool = False
+
+    @property
+    def resolved_coords(self) -> Tuple[int, int]:
+        '''
+        Converts the "real" coordinates stored as `np.float64` into
+        rounded integers to place the object on a curses `Window`
+        '''
+        y, x = np.rint(self.coordinates).astype(int)
+        return (y, x)
 
     def change_pitch(self, up: bool) -> None:
         ''''''
@@ -100,15 +143,14 @@ class Projectile:
         # ...then check if boundary is hit (execute action if so)
         self.react_to_boundary()
 
-    @staticmethod
-    def hit_boundary(coordinates: Coordinates) -> Tuple[bool, bool]:
+    def hit_boundary(self, coordinates: Coordinates) -> Tuple[bool, bool]:
         '''
         Returns a two-tuple of bools denoting if an object is touching
         the y- or x-axis boundaries of the arena
         '''
 
         hit_y_boundary, hit_x_boundary = False, False
-        y, x = np.rint(coordinates)
+        y, x = np.rint(coordinates).astype(int)
 
         if y <= utils.ULY or y >= utils.LRY:
             hit_y_boundary = True
@@ -128,7 +170,7 @@ class Projectile:
         If False, the Projectile instance will be deleted.
         '''
 
-        y, x = np.rint(self.coordinates)
+        y, x = self.resolved_coords
 
         hit_y, hit_x = self.hit_boundary(self.coordinates)
         if self.infinite:
@@ -153,17 +195,14 @@ class Projectile:
 
         # clear previous render of position of object
         if not any(self.hit_boundary(self.coordinates)):
-            screen.addch(*np.rint(self.coordinates).astype(int), ' ')
+            screen.addch(*self.resolved_coords, ' ')
 
         # move object to new position
         self.move()
 
         # render new position of object
         if not any(self.hit_boundary(self.coordinates)):
-            screen.addch(*np.rint(self.coordinates).astype(int), self.body)
-
-    def mark_for_deletion(self) -> None:
-        self.for_deletion = True
+            screen.addch(*self.resolved_coords, self.body)
 
 
 @dataclass
@@ -188,38 +227,36 @@ class Plane(Projectile):
     Initial state of nose coordinates are determined by direction.
     '''
 
+    plane_id: int = None
+    yoke_dict: dict = None
+
     body: str = '+'
     nose: str = field(init=False)
     nose_coords: Coordinates = field(init=False)
 
     infinite: bool = True
 
+    hull_integrity: int = 100
+    fired_cannon: List[Cannon] = field(default_factory=list)
+
     def __post_init__(self):
+
+        # initialise curses color pair
+        curses.init_pair(self.plane_id, self.color, curses.COLOR_BLACK)
+
+        # resolve nose coordinates and draw
         self.nose_coords = (
-            np.rint(self.coordinates) +
+            self.resolved_coords +
             np.rint(resolve_direction(self.angle_of_attack))
         )
-        self.render_nose()
+        self._render_nose()
 
-    def move(self) -> None:
-
-        # call base class move method
-        super().move()
-
-        # extend base class to also adjust coordinates of "nose"
-        self.nose_coords = (
-            np.rint(self.coordinates) +
-            np.rint(resolve_direction(self.angle_of_attack))
-        )
-        self.render_nose()
-
-    def render_nose(self) -> None:
+    def _render_nose(self) -> None:
         r'''
             \    |    /
         -+   x   +   x    +-  x   +   x
                                \  |  /
 
-        •oOoOo•
         '''
         y, x = np.rint(resolve_direction(self.angle_of_attack))
 
@@ -240,31 +277,26 @@ class Plane(Projectile):
             elif x == 1:
                 self.nose = '/'
 
-    def draw(self, screen: Window) -> None:
-        '''Override base draw() method to include drawing of nose'''
+    def parse_key(self, key: int) -> None:
+        '''
+        Accepts a key-press captured by curses `stdscr.getch` represented
+        as an ordinal integer.
 
-        # clear previous render of position of plane
-        if not any(self.hit_boundary(self.coordinates)):
-            screen.addch(*np.rint(self.coordinates).astype(int), ' ')
-        if not any(self.hit_boundary(self.nose_coords)):
-            screen.addch(*np.rint(self.nose_coords).astype(int), ' ')
+        Plane reactions are mapped to key-presses in the `.yoke_dict`
+        instance attribute.
+        '''
 
-        # move plane to new position
-        self.move()
+        # check key corresponds to plane's controls
+        if key in self.yoke_dict:
 
-        # render new position of plane
-        if not any(self.hit_boundary(self.coordinates)):
-            screen.addch(
-                *np.rint(self.coordinates).astype(int),
-                self.body,
-                curses.color_pair(self.color_pair)
-            )
-        if not any(self.hit_boundary(self.nose_coords)):
-            screen.addch(
-                *np.rint(self.nose_coords).astype(int),
-                self.nose,
-                curses.color_pair(self.color_pair)
-            )
+            # isolate navigation controls
+            if self.yoke_dict[key] in ['up', 'down']:
+                self.change_pitch(up=self.yoke_dict[key] == 'up')
+
+            # ...otherwise fire cannon
+            if self.yoke_dict[key] == 'shoot':
+                cannon_round = self.fire_cannon()
+                self.fired_cannon.append(cannon_round)
 
     def fire_cannon(self) -> Cannon:
 
@@ -273,3 +305,51 @@ class Plane(Projectile):
             turning_circle=0,
             angle_of_attack=np.copy(self.angle_of_attack)
         )
+
+    def move(self) -> None:
+
+        # call base class move method
+        super().move()
+
+        # extend base class to also adjust coordinates of "nose"
+        self.nose_coords = (
+            np.rint(self.coordinates) +
+            np.rint(resolve_direction(self.angle_of_attack))
+        )
+        self._render_nose()
+
+    def draw(self, screen: Window) -> None:
+        '''Override base draw() method to include drawing of nose'''
+
+        # clear previous render of position of plane
+        if not any(self.hit_boundary(self.coordinates)):
+            screen.addch(*self.resolved_coords, ' ')
+        if not any(self.hit_boundary(self.nose_coords)):
+            screen.addch(*np.rint(self.nose_coords).astype(int), ' ')
+
+        # create `PlaneSmoke` instance prior to move if hull integrity
+        # below threshold
+        if self.hull_integrity < 40:
+            anims_at_coords = [
+                a for a in self.animations
+                if a.resolved_coords == self.resolved_coords
+            ]
+            if not anims_at_coords:
+                self.animations.append(PlaneSmoke(self.resolved_coords))
+
+        # move plane to new position
+        self.move()
+
+        # render new position of plane
+        if not any(self.hit_boundary(self.coordinates)):
+            screen.addch(
+                *self.resolved_coords,
+                self.body,
+                curses.color_pair(self.plane_id)
+            )
+        if not any(self.hit_boundary(self.nose_coords)):
+            screen.addch(
+                *np.rint(self.nose_coords).astype(int),
+                self.nose,
+                curses.color_pair(self.plane_id)
+            )
