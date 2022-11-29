@@ -1,5 +1,6 @@
 import curses
 import os
+from collections import namedtuple
 from typing import Any, TYPE_CHECKING
 
 import numpy as np
@@ -11,6 +12,10 @@ if TYPE_CHECKING:
     Window = _CursesWindow
 else:
     Window = Any
+
+
+# === helper data structures ===
+KeyPress = namedtuple('KeyPress', 'plane_id key')
 
 
 # === custom types ===
