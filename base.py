@@ -68,8 +68,11 @@ class AnimatedSprite:
     Define sprite art objects with a `.next_frame` method for animating
     '''
     coordinates: Coordinates
-    frames: list = field(default_factory=list)
-    colors: list = field(default_factory=list)
+    angle_of_attack: Radian = 0
+    speed: Scalar = 0
+
+    frames: list = field(init=False)
+    colors: list = field(init=False)
 
     for_deletion: bool = False
 
@@ -82,6 +85,20 @@ class AnimatedSprite:
         y, x = np.rint(self.coordinates).astype(int)
         return (y, x)
 
+    @property
+    def inside_arena(self) -> bool:
+        '''
+        Returns True if coordinates are inside the arena boundary
+        '''
+        y, x = self.resolved_coords
+        inside_y = y > utils.ULY and y < utils.LRY
+        inside_x = x > utils.ULX and x < utils.LRX
+
+        if inside_y and inside_x:
+            return True
+        else:
+            return False
+
     def next_frame(self, screen: Window) -> None:
         '''
         Switches sprite to next 'frame' in `.frames` list
@@ -93,9 +110,20 @@ class AnimatedSprite:
         Animation plays until 'frames' are exhausted.
         '''
 
-        # if utils.get_char(screen, *self.resolved_coords) == ' ':
+        # clear previous frame if moving
+        if self.inside_arena:
+            screen.addch(*self.resolved_coords, ' ')
+
+        # update coordinates
+        self.coordinates += (
+            resolve_direction(self.angle_of_attack) *
+            self.speed
+        )
+
+        # draw next frame
         if self.frames:
-            screen.addch(*self.resolved_coords, self.frames.pop(0))
+            if self.inside_arena:
+                screen.addch(*self.resolved_coords, self.frames.pop(0))
         else:
             screen.addch(*self.resolved_coords, ' ')
             self.for_deletion = True
@@ -107,6 +135,14 @@ class PlaneSmoke(AnimatedSprite):
     def __post_init__(self):
         self.frames: list = list('••ooO0oo00oo••')
         self.colors: list = list('11111111111111')
+
+
+@dataclass
+class PlaneExplosion(AnimatedSprite):
+
+    def __post_init__(self):
+        self.frames: List[str] = list('x+x+x+•••.........')
+        self.colors: List[str] = list('111111111111111111')
 
 
 @dataclass
@@ -408,4 +444,12 @@ class Plane(Projectile):
                     curses.color_pair(self.color_pair)
                 )
         else:
+            for i in range(-2, 3):
+                self.animations.append(
+                    PlaneExplosion(
+                        coordinates=self.resolved_coords,
+                        angle_of_attack=self.angle_of_attack + (i / 3),
+                        speed=self.speed * 0.7
+                    )
+                )
             self.for_deletion = True

@@ -116,6 +116,7 @@ class Game(ABC):
         pass
 
 
+@dataclass
 class LocalGame(Game):
 
     def _provision_planes(self) -> List[Plane]:

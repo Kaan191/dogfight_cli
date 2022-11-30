@@ -17,7 +17,7 @@ def main(stdscr: Window):
     # initial settings
     curses.curs_set(0)  # stops blinking cursor
     stdscr.nodelay(1)   #
-    stdscr.timeout(50)  # controls refresh rate
+    stdscr.timeout(30)  # controls refresh rate
 
     # create arena
     arena = Arena(stdscr)
