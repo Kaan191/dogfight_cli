@@ -1,14 +1,16 @@
+import argparse
 import curses
 import os
 import sys
 
 from base import Arena, TopBox, Window
-from game import LocalGame
+from game import LocalGame, NetworkGame
 from planes import BF109, P51
 
 
 # set env variable so that xterm can show ACS_* curses characters
 os.environ['NCURSES_NO_UTF8_ACS'] = '1'
+os.environ['DOGFIGHT_LOCAL'] = '1'
 
 
 def main(stdscr: Window):
@@ -26,9 +28,15 @@ def main(stdscr: Window):
     info_box.draw()
 
     # create Game
-    game = LocalGame(screen=stdscr, info_box=info_box)
+    if os.environ['DOGFIGHT_LOCAL'] == '1':
+        game = LocalGame(screen=stdscr, info_box=info_box)
+    else:
+        game = NetworkGame(screen=stdscr, info_box=info_box)
     game.planes = [BF109, P51]
-    game.start_game()
+    try:
+        game.start_game()
+    except Exception as e:
+        sys.exit(e.with_traceback())
 
     while True:
         try:
@@ -42,4 +50,20 @@ def main(stdscr: Window):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-n', '--network', action='store_true', help='flag for network game'
+    )
+    parser.add_argument(
+        '-H', '--host', help='IP address of server'
+    )
+    parser.add_argument(
+        '-P', '--port', default='51515', help='port of server'
+    )
+    args = parser.parse_args()
+    if args.network:
+        os.environ['DOGFIGHT_LOCAL'] = '0'
+        os.environ['DOGFIGHT_HOST'] = args.host
+        os.environ['DOGFIGHT_PORT'] = args.port
+
     curses.wrapper(main)

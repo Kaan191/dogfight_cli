@@ -45,17 +45,21 @@ class TopBox:
         self.stdscr.addstr(textbox_top + line, textbox_left, msg)
 
     def update(self, game, key_presses) -> None:
-        messages = [
-            f'keys pressed: {[k.key for k in key_presses]}',
-            # f'angle of attack: {round(plane.angle_of_attack / np.pi, 1)} '
-            # f'* π',
-            # f'coordinates: {plane.resolved_coords}',
-            f'cannon in play: {len(game.cannons)}',
-            f'animations: {len(game.animations)}',
-            f'integrity: {[(p.hull_integrity) for p in game.planes]}'
-        ]
-        for i, m in enumerate(messages):
-            self._write(m, line=i)
+        keys_pressed = ', '.join([str(k.key) for k in key_presses])
+        integrity = ', '.join([str(p.hull_integrity) for p in game.planes])
+        # angle = f'{round(plane.angle_of_attack / np.pi, 1)} * π'
+
+        messages = {
+            'keys pressed': keys_pressed,
+            'cannon in play': str(len(game.cannons)),
+            'animations': str(len(game.animations)),
+            'integrity': integrity
+        }
+
+        for i, m in enumerate(messages.items()):
+            key = f'{m[0]: <15}: '
+            val = f'{m[1]: <15}'
+            self._write(key + val, line=i)
 
 
 @dataclass
@@ -244,8 +248,6 @@ class Cannon(Projectile):
                 hit = True
                 self.for_deletion = True
                 # TODO: play a "hit" animation
-            if plane.hull_integrity <= 0:
-                plane.for_deletion = True
 
         return hit
 
@@ -280,6 +282,7 @@ class Plane(Projectile):
     '''
 
     plane_id: int = None
+    color_pair: int = None
 
     body: str = '+'
     nose: str = field(init=False)
@@ -294,7 +297,7 @@ class Plane(Projectile):
     def __post_init__(self):
 
         # initialise curses color pair
-        curses.init_pair(self.plane_id, self.color, curses.COLOR_BLACK)
+        curses.init_pair(self.color_pair, self.color, curses.COLOR_BLACK)
 
         # resolve nose coordinates and draw
         self.nose_coords = tuple(
@@ -389,16 +392,20 @@ class Plane(Projectile):
         # move plane to new position
         self._move()
 
-        # render new position of plane
-        if not any(self._hit_boundary(self.coordinates)):
-            screen.addch(
-                *self.resolved_coords,
-                self.body,
-                curses.color_pair(self.plane_id)
-            )
-        if not any(self._hit_boundary(self.nose_coords)):
-            screen.addch(
-                *np.rint(self.nose_coords).astype(int),
-                self.nose,
-                curses.color_pair(self.plane_id)
-            )
+        # render new position of plane if not destroyed
+        # otherwise, mark plane for deletion and don't draw
+        if self.hull_integrity > 0:
+            if not any(self._hit_boundary(self.coordinates)):
+                screen.addch(
+                    *self.resolved_coords,
+                    self.body,
+                    curses.color_pair(self.color_pair)
+                )
+            if not any(self._hit_boundary(self.nose_coords)):
+                screen.addch(
+                    *np.rint(self.nose_coords).astype(int),
+                    self.nose,
+                    curses.color_pair(self.color_pair)
+                )
+        else:
+            self.for_deletion = True

@@ -1,4 +1,6 @@
 import curses
+import os
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List
@@ -97,7 +99,7 @@ class Game(ABC):
         Provisions `Planes` and waits for conditions before starting
         the game
         '''
-        self._provision_planes()
+        self.planes = self._provision_planes()
 
         conditions_met = False
         while not conditions_met:
@@ -116,7 +118,7 @@ class Game(ABC):
 
 class LocalGame(Game):
 
-    def _provision_planes(self) -> None:
+    def _provision_planes(self) -> List[Plane]:
         provisioned_planes = []
 
         start_coords = [START_COORDS_ONE, START_COORDS_TWO]
@@ -125,13 +127,14 @@ class LocalGame(Game):
             provisioned_planes.append(
                 p(
                     plane_id=i,
+                    color_pair=i,
                     coordinates=start_coords.pop(0),
                     angle_of_attack=start_angles.pop(0),
                     ready=True
                 )
             )
 
-        self.planes = provisioned_planes
+        return provisioned_planes
 
     def read_key(self) -> List[KeyPress]:
         key_presses = []
@@ -147,34 +150,64 @@ class LocalGame(Game):
         return key_presses
 
 
+@dataclass
 class NetworkGame(Game):
 
-    client: Client = None
-    host: str
-    port: int
+    conn_id: str = field(init=False)
+    client: Client = field(init=False)
 
     def __post_init__(self) -> None:
         # create client that will connect to Server
-        self.client = Client(1, self.host, int(self.port))
+        self.conn_id = str(uuid.uuid4())
+        host = os.environ['DOGFIGHT_HOST']
+        port = os.environ['DOGFIGHT_PORT']
+        self.client = Client(self.conn_id, host, int(port))
 
-    def _provision_planes(self) -> None:
-        pass
+    def _provision_planes(self) -> List[Plane]:
+        provisioned_planes = []
+
+        # TODO: addd timeout
+        # ping server and wait until two connections detected
+        self.client.send({self.conn_id: None})
+
+        while True:
+            recv = self.client.receive()
+            if recv and len(recv) == 2:
+                uuids = list(recv.keys())
+                uuids.sort()
+
+                color_pairs = [1, 2]
+                start_coords = [START_COORDS_ONE, START_COORDS_TWO]
+                start_angles = [START_ANGLE_ONE, START_ANGLE_TWO]
+
+                for u_id in uuids:
+                    plane = self.planes.pop()
+                    provisioned_planes.append(
+                        plane(
+                            plane_id=u_id,
+                            color_pair=color_pairs.pop(0),
+                            coordinates=start_coords.pop(0),
+                            angle_of_attack=start_angles.pop(0),
+                            ready=True
+                        )
+                    )
+                return provisioned_planes
 
     def read_key(self) -> List[KeyPress]:
         '''
         First send "player" key, then receive keys
         '''
-        key_presses = []
-
-        key = str(self.screen.getch()).encode()
-        self.client.send(key)
-        recv = self.client.receive()
-        if recv:
-            key = int(recv.decode())
+        key_press = self.screen.getch()
+        if key_press == -1:
+            key = None
         else:
-            key = -1
+            key = P_ONE_YOKE.get(key_press, -1)
+        self.client.send({self.conn_id: key})
 
-        return key_presses
+        while True:
+            recv = self.client.receive()
+            if recv and len(recv) == 2:
+                return [KeyPress(p_id, k) for p_id, k in recv.items()]
 
     def close_game(self) -> None:
         _ = self.client.receive()

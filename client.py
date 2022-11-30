@@ -1,8 +1,10 @@
+import json
 import logging
 import pathlib
 import socket
 import selectors
 from collections import namedtuple
+from typing import Dict, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,7 @@ class Client():
         )
         self.sel.register(sock, events, data=data)
 
-    def receive(self):
+    def receive(self) -> Dict[str, Optional[str]]:
 
         recv_data = None
 
@@ -64,18 +66,17 @@ class Client():
 
                     if recv_data:
                         logger.debug(
-                            f'received data from connection {data.connid}'
+                            f'received {recv_data} from connection {data.connid}'
                         )
-                    if not recv_data:
+                    else:
                         logger.debug(
                             f'no data received, closing connection {data.connid}'
                         )
                         sock.close()
 
-                    # no guarantee all data is collected...fix this
-                    return recv_data
+                    return json.loads(recv_data.decode('utf-8'))
 
-    def send(self, msg: bytes):
+    def send(self, msg: Dict[str, Optional[str]]) -> None:
 
         events = self.sel.select(timeout=3)
         if events:
@@ -84,16 +85,11 @@ class Client():
                     sock = key.fileobj
                     data = key.data
 
-                    while True:
-                        if msg:
-                            logger.debug(
-                                f'sending {msg} to connection {data.connid}'
-                            )
-                            sent = sock.send(msg)
-                            msg = msg[sent:]
-                        else:
-                            logger.debug(f'message sent to {data.connid}')
-                            break
+                    logger.debug(
+                        f'sending {msg} to connection {data.connid}'
+                    )
+                    send_json = json.dumps(msg).encode('utf-8')
+                    sock.send(send_json)  # Should be ready to write
 
     def close(self):
 
