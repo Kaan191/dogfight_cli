@@ -3,7 +3,7 @@ import curses
 import os
 import sys
 
-from base import Arena, TopBox, Window
+from base import Arena, TopBox, LowerLeftBox, LowerRightBox, Window
 from game import LocalGame, NetworkGame
 from planes import BF109, P51
 
@@ -24,15 +24,18 @@ def main(stdscr: Window):
     arena = Arena(stdscr)
     arena.draw()
 
-    # create info box above arena
-    info_box = TopBox(stdscr)
-    info_box.draw()
+    # create dynamic info box above and below arena
+    boxes = []
+    for box in [TopBox, LowerLeftBox, LowerRightBox]:
+        _box = box(stdscr)
+        _box.draw()
+        boxes.append(_box)
 
     # create Game
     if os.environ['DOGFIGHT_LOCAL'] == '1':
-        game = LocalGame(screen=stdscr, info_box=info_box)
+        game = LocalGame(stdscr, *boxes)
     else:
-        game = NetworkGame(screen=stdscr, info_box=info_box)
+        game = NetworkGame(stdscr, *boxes)
     game.planes = [BF109, P51]
     try:
         game.start_game()

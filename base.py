@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 import time
+from abc import ABC, abstractmethod
 from curses import textpad
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -28,22 +29,55 @@ class Arena:
 
 
 @dataclass
-class TopBox:
+class InfoBox(ABC):
+
+    # curses window for "drawing" on
     stdscr: Window
 
+    # where info box is placed relative to `Arena`
+    anchor: str = field(default='top')
+
+    # dimensions to be defined in subclass __post_init__ method
+    uly: int = field(init=False)
+    ulx: int = field(init=False)
+    lry: int = field(init=False)
+    lrx: int = field(init=False)
+
     def draw(self) -> None:
+        '''
+        Draw box
+        '''
         textpad.rectangle(
             self.stdscr,
-            uly=utils.ULY - 6,
-            ulx=utils.ULX,
-            lry=utils.ULY - 1,
-            lrx=utils.LRX
+            uly=self.uly,
+            ulx=self.ulx,
+            lry=self.lry,
+            lrx=self.lrx
         )
 
     def _write(self, msg: str, line: int) -> None:
-        textbox_top = utils.ULY - 5
-        textbox_left = utils.ULX + 1
+        '''
+        Helper function to control placement of messages
+        '''
+        textbox_top = self.uly + 1
+        textbox_left = self.ulx + 1
         self.stdscr.addstr(textbox_top + line, textbox_left, msg)
+
+    @abstractmethod
+    def update(self, game, *kwargs) -> None:
+        '''
+        Define logic for interactive game display
+        '''
+
+
+@dataclass
+class TopBox(InfoBox):
+
+    def __post_init__(self):
+        self.uly = utils.ULY - 6
+        self.ulx = utils.ULX
+        self.lry = utils.ULY - 1
+        self.lrx = utils.LRX
 
     def update(self, game, key_presses) -> None:
         keys_pressed = ', '.join([str(k.key) for k in key_presses])
@@ -60,6 +94,62 @@ class TopBox:
         for i, m in enumerate(messages.items()):
             key = f'{m[0]: <15}: '
             val = f'{m[1]: <15}'
+            self._write(key + val, line=i)
+
+
+@dataclass
+class LowerLeftBox(InfoBox):
+    anchor: str = 'bottom'
+
+    def __post_init__(self):
+        self.uly = utils.LRY + 1
+        self.ulx = utils.ULX
+        self.lry = utils.LRY + 4
+        self.lrx = utils.LRX - 1 - utils.ARENA_WIDTH // 2
+
+        self.plane_idx: int = 0
+
+    def update(self, game) -> None:
+        plane = game.planes[self.plane_idx]
+
+        messages = {
+            'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
+            'integrity': plane.hull_integrity / 100
+        }
+
+        width = utils.ARENA_WIDTH // 2
+        for i, m in enumerate(messages.items()):
+            bar_width = int(float(m[1]) * int(width * 0.6))
+            key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 2}}'
+            self._write(key + val, line=i)
+
+
+@dataclass
+class LowerRightBox(InfoBox):
+    anchor: str = 'bottom'
+
+    def __post_init__(self):
+        self.uly = utils.LRY + 1
+        self.ulx = utils.ULX + 1 + utils.ARENA_WIDTH // 2
+        self.lry = utils.LRY + 4
+        self.lrx = utils.LRX
+
+        self.plane_idx: int = 1
+
+    def update(self, game) -> None:
+        plane = game.planes[self.plane_idx]
+
+        messages = {
+            'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
+            'integrity': plane.hull_integrity / 100
+        }
+
+        width = utils.ARENA_WIDTH // 2
+        for i, m in enumerate(messages.items()):
+            bar_width = int(float(m[1]) * int(width * 0.6))
+            key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 2}}'
             self._write(key + val, line=i)
 
 

@@ -7,7 +7,8 @@ from typing import List
 
 import numpy as np
 
-from base import AnimatedSprite, Plane, Projectile, TopBox, Window
+from base import LowerLeftBox, LowerRightBox, TopBox, Window
+from base import AnimatedSprite, Plane, Projectile
 from client import Client
 from utils import ARENA_HEIGHT, ARENA_WIDTH, LRX, ULX, ULY
 from utils import KeyPress
@@ -40,6 +41,8 @@ P_TWO_YOKE = {
 class Game(ABC):
     screen: Window
     info_box: TopBox
+    ll_box: LowerLeftBox
+    lr_box: LowerRightBox
 
     planes: List[Plane] = field(default_factory=list)
     cannons: List[Projectile] = field(default_factory=list)
@@ -83,6 +86,8 @@ class Game(ABC):
 
             # update info box
             self.info_box.update(self, key_presses)
+            self.ll_box.update(self)
+            self.lr_box.update(self)
 
         # === update cannon rounds ===
         self.cannons = [c for c in self.cannons if not c.for_deletion]
