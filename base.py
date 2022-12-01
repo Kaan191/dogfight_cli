@@ -182,14 +182,13 @@ class Projectile:
         elif not up:
             self.angle_of_attack -= self.turning_circle
 
-    def _hit_boundary(self, coordinates: Coordinates) -> Tuple[bool, bool]:
+    def _hit_boundary(self, y: int, x: int) -> Tuple[bool, bool]:
         '''
         Returns a two-tuple of bools denoting if an object is touching
         the y- or x-axis boundaries of the arena
         '''
 
         hit_y_boundary, hit_x_boundary = False, False
-        y, x = np.rint(coordinates).astype(int)
 
         if y <= utils.ULY or y >= utils.LRY:
             hit_y_boundary = True
@@ -210,20 +209,19 @@ class Projectile:
         '''
 
         y, x = self.resolved_coords
-
-        hit_y, hit_x = self._hit_boundary(self.coordinates)
+        hit_y, hit_x = self._hit_boundary(y, x)
         if self.infinite:
             if hit_y:
                 self.coordinates[0] = (
                     y +
-                    (plus_minus(utils.ARENA_HEIGHT, y) * utils.ARENA_HEIGHT) -
-                    plus_minus(utils.ARENA_HEIGHT, y)
+                    (plus_minus(utils.TERM_HEIGHT//2, y) * utils.ARENA_HEIGHT) -
+                    plus_minus(utils.TERM_HEIGHT//2, y)
                 )
             elif hit_x:
                 self.coordinates[1] = (
                     x +
-                    (plus_minus(utils.ARENA_WIDTH, x) * utils.ARENA_WIDTH) -
-                    plus_minus(utils.ARENA_WIDTH, x)
+                    (plus_minus(utils.TERM_WIDTH//2, x) * utils.ARENA_WIDTH) -
+                    plus_minus(utils.TERM_WIDTH//2, x)
                 )
         else:
             if hit_y or hit_x:
@@ -247,14 +245,14 @@ class Projectile:
         '''Draw object on terminal screen'''
 
         # clear previous render of position of object
-        if not any(self._hit_boundary(self.coordinates)):
+        if not any(self._hit_boundary(*self.resolved_coords)):
             screen.addch(*self.resolved_coords, ' ')
 
         # move object to new position
         self._move()
 
         # render new position of object
-        if not any(self._hit_boundary(self.coordinates)):
+        if not any(self._hit_boundary(*self.resolved_coords)):
             screen.addch(*self.resolved_coords, self.body)
 
     def hit_check(self, obj: Projectile) -> bool:
@@ -291,7 +289,7 @@ class Cannon(Projectile):
         '''Draw object on terminal screen'''
 
         # clear previous render of position of object
-        if not any(self._hit_boundary(self.coordinates)):
+        if not any(self._hit_boundary(*self.resolved_coords)):
             screen.addch(*self.resolved_coords, ' ')
 
         # check if cannon hits plane. If no hit, move the cannon
@@ -299,7 +297,7 @@ class Cannon(Projectile):
             self._move()
             # render new position of cannon if the next move wasn't a hit
             if not self._check_hits(planes):
-                if not any(self._hit_boundary(self.coordinates)):
+                if not any(self._hit_boundary(*self.resolved_coords)):
                     screen.addch(*self.resolved_coords, self.body)
 
 
@@ -410,9 +408,9 @@ class Plane(Projectile):
         '''Override base draw() method to include drawing of nose'''
 
         # clear previous render of position of plane
-        if not any(self._hit_boundary(self.coordinates)):
+        if not any(self._hit_boundary(*self.resolved_coords)):
             screen.addch(*self.resolved_coords, ' ')
-        if not any(self._hit_boundary(self.nose_coords)):
+        if not any(self._hit_boundary(*self.nose_coords)):
             screen.addch(*np.rint(self.nose_coords).astype(int), ' ')
 
         # create `PlaneSmoke` instance prior to move if hull integrity
@@ -431,13 +429,13 @@ class Plane(Projectile):
         # render new position of plane if not destroyed
         # otherwise, mark plane for deletion and don't draw
         if self.hull_integrity > 0:
-            if not any(self._hit_boundary(self.coordinates)):
+            if not any(self._hit_boundary(*self.resolved_coords)):
                 screen.addch(
                     *self.resolved_coords,
                     self.body,
                     curses.color_pair(self.color_pair)
                 )
-            if not any(self._hit_boundary(self.nose_coords)):
+            if not any(self._hit_boundary(*self.nose_coords)):
                 screen.addch(
                     *np.rint(self.nose_coords).astype(int),
                     self.nose,
