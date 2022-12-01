@@ -2,7 +2,7 @@ from functools import partial
 
 import numpy as np
 
-from base import Plane
+from base import Gun, Plane
 
 
 # === plane partial classes ===
@@ -16,6 +16,7 @@ P51 = partial(
     color=1,
     speed=0.3,
     turning_circle=(np.pi * 1/8),
+    gun=Gun(5, 3, 20)
 )
 
 
@@ -24,4 +25,5 @@ BF109 = partial(
     color=3,
     speed=0.3,
     turning_circle=(np.pi * 1/8),
+    gun=Gun(5, 3, 20)
 )

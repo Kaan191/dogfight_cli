@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import curses
+import time
 from curses import textpad
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -124,6 +125,8 @@ class AnimatedSprite:
         if self.frames:
             if self.inside_arena:
                 screen.addch(*self.resolved_coords, self.frames.pop(0))
+            else:
+                self.frames.pop(0)
         else:
             screen.addch(*self.resolved_coords, ' ')
             self.for_deletion = True
@@ -214,13 +217,19 @@ class Projectile:
             if hit_y:
                 self.coordinates[0] = (
                     y +
-                    (plus_minus(utils.TERM_HEIGHT//2, y) * utils.ARENA_HEIGHT) -
+                    (
+                        plus_minus(utils.TERM_HEIGHT//2, y) *
+                        utils.ARENA_HEIGHT
+                    ) -
                     plus_minus(utils.TERM_HEIGHT//2, y)
                 )
             elif hit_x:
                 self.coordinates[1] = (
                     x +
-                    (plus_minus(utils.TERM_WIDTH//2, x) * utils.ARENA_WIDTH) -
+                    (
+                        plus_minus(utils.TERM_WIDTH//2, x) *
+                        utils.ARENA_WIDTH
+                    ) -
                     plus_minus(utils.TERM_WIDTH//2, x)
                 )
         else:
@@ -274,19 +283,29 @@ class Cannon(Projectile):
 
     body: str = '•'
 
+    damage: int = 0
+
     def _check_hits(self, planes: List[Plane]) -> bool:
         hit = False
         for plane in planes:
             if plane.hit_check(self):
-                plane.hull_integrity -= 20
+                plane.hull_integrity -= self.damage
                 hit = True
                 self.for_deletion = True
-                # TODO: play a "hit" animation
+                # play a "hit" animation
+                for i in range(-1, 2):
+                    plane.animations.append(
+                        PlaneExplosion(
+                            coordinates=self.resolved_coords,
+                            angle_of_attack=self.angle_of_attack + (i / 3),
+                            speed=self.speed * 0.7
+                        )
+                    )
 
         return hit
 
-    def draw(self, screen: Window, planes: List[Plane]) -> None:
-        '''Draw object on terminal screen'''
+    def update(self, screen: Window, planes: List[Plane]) -> None:
+        '''Draw object on terminal screen and calculate hit/damage'''
 
         # clear previous render of position of object
         if not any(self._hit_boundary(*self.resolved_coords)):
@@ -299,6 +318,52 @@ class Cannon(Projectile):
             if not self._check_hits(planes):
                 if not any(self._hit_boundary(*self.resolved_coords)):
                     screen.addch(*self.resolved_coords, self.body)
+
+
+@dataclass
+class Gun:
+
+    # gun configuration
+    capacity: int
+    reload_time: int
+    damage: int
+
+    # gun state
+    rounds_in_chamber: int = field(init=False)
+    last_fired: Optional[int] = None
+    reloading: bool = False
+
+    def __post_init__(self):
+
+        self.rounds_in_chamber = np.copy(self.capacity)
+
+    def fire(
+        self,
+        coordinates: Tuple[int, int],
+        angle_of_attack: Radian
+    ) -> Optional[Cannon]:
+
+        # store fired cannon in variable
+        c = None
+
+        # check if gun is reloading; reset gun if reloading complete
+        if self.reloading:
+            if time.monotonic() - self.last_fired > self.reload_time:
+                self.rounds_in_chamber = np.copy(self.capacity)
+                self.reloading = False
+                self.rounds_in_chamber -= 1
+                c = Cannon(coordinates, angle_of_attack, damage=self.damage)
+        else:
+            self.rounds_in_chamber -= 1
+            c = Cannon(coordinates, angle_of_attack, damage=self.damage)
+
+        # if cannon was fired, check if chamber is empty and mark
+        # as reloading if so
+        if c:
+            if self.rounds_in_chamber == 0:
+                self.last_fired = time.monotonic()
+                self.reloading = True
+            return c
 
 
 @dataclass
@@ -317,6 +382,7 @@ class Plane(Projectile):
 
     plane_id: int = None
     color_pair: int = None
+    gun: Gun = None
 
     body: str = '+'
     nose: str = field(init=False)
@@ -366,16 +432,21 @@ class Plane(Projectile):
             elif x == 1:
                 self.nose = '/'
 
-    def _fire_cannon(self) -> Cannon:
+    def _fire_cannon(self) -> Optional[Cannon]:
+        '''
+        Attempt to fire a cannon. If Gun.is_reloading is True, None is
+        returned.
+        '''
 
-        return Cannon(
-            coordinates=np.copy(
-                self.nose_coords +
-                np.rint(resolve_direction(self.angle_of_attack))
-            ),
-            turning_circle=0,
-            angle_of_attack=np.copy(self.angle_of_attack)
+        # cannon starting position just ahead of the plane's nose
+        start_coords = np.copy(
+            self.nose_coords +
+            np.rint(resolve_direction(self.angle_of_attack))
         )
+
+        c = self.gun.fire(start_coords, np.copy(self.angle_of_attack))
+        if c:
+            return c
 
     def parse_key(self, key_presses: List[KeyPress]) -> None:
         '''
@@ -390,7 +461,8 @@ class Plane(Projectile):
                 # ...otherwise fire cannon
                 if key == 'shoot':
                     cannon_round = self._fire_cannon()
-                    self.fired_cannon.append(cannon_round)
+                    if cannon_round:
+                        self.fired_cannon.append(cannon_round)
 
     def _move(self) -> None:
 

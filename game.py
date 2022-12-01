@@ -87,7 +87,7 @@ class Game(ABC):
         # === update cannon rounds ===
         self.cannons = [c for c in self.cannons if not c.for_deletion]
         for cannon in self.cannons:
-            cannon.draw(self.screen, self.planes)
+            cannon.update(self.screen, self.planes)
 
         # === play animations ===
         self.animations = [a for a in self.animations if not a.for_deletion]
