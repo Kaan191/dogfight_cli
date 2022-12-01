@@ -15,6 +15,7 @@ os.environ['DOGFIGHT_LOCAL'] = '1'
 
 def main(stdscr: Window):
     # initial settings
+    curses.use_default_colors()
     curses.curs_set(0)  # stops blinking cursor
     stdscr.nodelay(1)   #
     stdscr.timeout(30)  # controls refresh rate

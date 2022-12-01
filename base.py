@@ -128,7 +128,6 @@ class AnimatedSprite:
             else:
                 self.frames.pop(0)
         else:
-            screen.addch(*self.resolved_coords, ' ')
             self.for_deletion = True
 
 
@@ -297,8 +296,8 @@ class Cannon(Projectile):
                     plane.animations.append(
                         PlaneExplosion(
                             coordinates=self.resolved_coords,
-                            angle_of_attack=self.angle_of_attack + (i / 3),
-                            speed=self.speed * 0.7
+                            angle_of_attack=self.angle_of_attack + (i / 5),
+                            speed=self.speed * 0.5
                         )
                     )
 
@@ -397,7 +396,7 @@ class Plane(Projectile):
     def __post_init__(self):
 
         # initialise curses color pair
-        curses.init_pair(self.color_pair, self.color, curses.COLOR_BLACK)
+        curses.init_pair(self.color_pair, self.color, -1)
 
         # resolve nose coordinates and draw
         self.nose_coords = tuple(
