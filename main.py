@@ -13,6 +13,10 @@ os.environ['NCURSES_NO_UTF8_ACS'] = '1'
 os.environ['DOGFIGHT_LOCAL'] = '1'
 
 
+# def _init_game(players: 'Player', boxes: 'InfoBox') -> Game:
+#     pass
+
+
 def main(stdscr: Window):
     # initial settings
     curses.use_default_colors()

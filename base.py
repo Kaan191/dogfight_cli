@@ -117,11 +117,11 @@ class LowerLeftBox(InfoBox):
             'integrity': plane.hull_integrity / 100
         }
 
-        width = utils.ARENA_WIDTH // 2
+        width = (utils.ARENA_WIDTH // 2) - 1
         for i, m in enumerate(messages.items()):
             bar_width = int(float(m[1]) * int(width * 0.6))
             key = f'{m[0]: <{int(width * 0.4) - 1}}: '
-            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 2}}'
+            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
 
 
@@ -145,11 +145,11 @@ class LowerRightBox(InfoBox):
             'integrity': plane.hull_integrity / 100
         }
 
-        width = utils.ARENA_WIDTH // 2
+        width = (utils.ARENA_WIDTH // 2) - 1
         for i, m in enumerate(messages.items()):
             bar_width = int(float(m[1]) * int(width * 0.6))
             key = f'{m[0]: <{int(width * 0.4) - 1}}: '
-            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 2}}'
+            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
 
 

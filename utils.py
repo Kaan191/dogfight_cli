@@ -31,8 +31,8 @@ Coordinates = NDArray[np.float64]
 # the upper left x-value is half the width of the terminal
 # divided by half the width of Arena; the bottom right x-value
 # is that amount subtracted from the width of terminal.
-ARENA_HEIGHT = 30
-ARENA_WIDTH = 60
+ARENA_HEIGHT = 20
+ARENA_WIDTH = 80
 TERM_HEIGHT = os.get_terminal_size().lines
 TERM_WIDTH = os.get_terminal_size().columns
 ULX = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
