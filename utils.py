@@ -15,7 +15,7 @@ else:
 
 
 # === helper data structures ===
-KeyPress = namedtuple('KeyPress', 'plane_id key')
+KeyPress = namedtuple('KeyPress', 'player_id key')
 
 
 # === custom types ===

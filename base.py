@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 import utils
-from utils import KeyPress, plus_minus, resolve_direction, Window
+from utils import plus_minus, resolve_direction, Window
 from utils import Coordinates, Radian, Scalar
 
 
@@ -81,7 +81,9 @@ class TopBox(InfoBox):
 
     def update(self, game, key_presses) -> None:
         keys_pressed = ', '.join([str(k.key) for k in key_presses])
-        integrity = ', '.join([str(p.hull_integrity) for p in game.planes])
+        integrity = ', '.join(
+            [str(p.plane.hull_integrity) for p in game.players]
+        )
         # angle = f'{round(plane.angle_of_attack / np.pi, 1)} * π'
 
         messages = {
@@ -109,9 +111,7 @@ class LowerLeftBox(InfoBox):
 
         self.plane_idx: int = 0
 
-    def update(self, game) -> None:
-        plane = game.planes[self.plane_idx]
-
+    def update(self, plane: Plane) -> None:
         messages = {
             'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
             'integrity': plane.hull_integrity / 100
@@ -137,9 +137,7 @@ class LowerRightBox(InfoBox):
 
         self.plane_idx: int = 1
 
-    def update(self, game) -> None:
-        plane = game.planes[self.plane_idx]
-
+    def update(self, plane: Plane) -> None:
         messages = {
             'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
             'integrity': plane.hull_integrity / 100
@@ -469,7 +467,6 @@ class Plane(Projectile):
     Initial state of nose coordinates are determined by direction.
     '''
 
-    plane_id: int = None
     color_pair: int = None
     gun: Gun = None
 
@@ -479,7 +476,6 @@ class Plane(Projectile):
 
     infinite: bool = True
 
-    ready: bool = False
     hull_integrity: int = 100
     fired_cannon: List[Cannon] = field(default_factory=list)
 
@@ -536,22 +532,6 @@ class Plane(Projectile):
         c = self.gun.fire(start_coords, np.copy(self.angle_of_attack))
         if c:
             return c
-
-    def parse_key(self, key_presses: List[KeyPress]) -> None:
-        '''
-        '''
-
-        for k in key_presses:
-            if k.plane_id == self.plane_id:
-                key = k.key
-                # isolate navigation controls
-                if key in ['up', 'down']:
-                    self._change_pitch(up=key == 'up')
-                # ...otherwise fire cannon
-                if key == 'shoot':
-                    cannon_round = self._fire_cannon()
-                    if cannon_round:
-                        self.fired_cannon.append(cannon_round)
 
     def _move(self) -> None:
 

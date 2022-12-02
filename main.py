@@ -4,17 +4,12 @@ import os
 import sys
 
 from base import Arena, TopBox, LowerLeftBox, LowerRightBox, Window
-from game import LocalGame, NetworkGame
-from planes import BF109, P51
+from game import LocalGame, Player, NetworkGame
 
 
 # set env variable so that xterm can show ACS_* curses characters
 os.environ['NCURSES_NO_UTF8_ACS'] = '1'
 os.environ['DOGFIGHT_LOCAL'] = '1'
-
-
-# def _init_game(players: 'Player', boxes: 'InfoBox') -> Game:
-#     pass
 
 
 def main(stdscr: Window):
@@ -29,25 +24,27 @@ def main(stdscr: Window):
     arena.draw()
 
     # create dynamic info box above and below arena
-    boxes = []
-    for box in [TopBox, LowerLeftBox, LowerRightBox]:
-        _box = box(stdscr)
-        _box.draw()
-        boxes.append(_box)
+    debug_box = TopBox(stdscr)
+    debug_box.draw()
+    llbox = LowerLeftBox(stdscr)
+    llbox.draw()
+    lrbox = LowerRightBox(stdscr)
+    lrbox.draw()
+
+    # create Players
+    players = [Player(info_box=llbox), Player(info_box=lrbox)]
 
     # create Game
     if os.environ['DOGFIGHT_LOCAL'] == '1':
-        game = LocalGame(stdscr, *boxes)
+        game = LocalGame(stdscr, debug_box, players)
     else:
-        game = NetworkGame(stdscr, *boxes)
-    game.planes = [BF109, P51]
-    try:
-        game.start_game()
-    except Exception as e:
-        sys.exit(e.with_traceback())
+        game = NetworkGame(stdscr, debug_box, players)
 
     while True:
         try:
+            if not game.is_started:
+                stdscr.refresh()
+                game.start_game()
             key_presses = game.read_key()
             game.next_frame(key_presses)
             stdscr.refresh()

@@ -7,9 +7,10 @@ from typing import List
 
 import numpy as np
 
-from base import LowerLeftBox, LowerRightBox, TopBox, Window
+from base import InfoBox, TopBox, Window
 from base import AnimatedSprite, Plane, Projectile
 from client import Client
+from planes import BF109, P51
 from utils import ARENA_HEIGHT, ARENA_WIDTH, LRX, ULX, ULY
 from utils import KeyPress
 
@@ -38,21 +39,70 @@ P_TWO_YOKE = {
 
 
 @dataclass
+class Player:
+    player_id: str = None
+
+    conn: Client = None
+    plane: Plane = None
+    info_box: InfoBox = None
+
+    kills: int = 0
+    ready: bool = False
+
+    def parse_key(self, key_presses: List[KeyPress]) -> None:
+        '''
+        '''
+        for k in key_presses:
+            if k.player_id == self.player_id:
+                key = k.key
+                # isolate navigation controls
+                if key in ['up', 'down']:
+                    self.plane._change_pitch(up=key == 'up')
+                # ...otherwise fire cannon
+                if key == 'shoot':
+                    cannon_round = self.plane._fire_cannon()
+                    if cannon_round:
+                        self.plane.fired_cannon.append(cannon_round)
+
+
+@dataclass
 class Game(ABC):
+    # curses items
     screen: Window
     info_box: TopBox
-    ll_box: LowerLeftBox
-    lr_box: LowerRightBox
 
-    planes: List[Plane] = field(default_factory=list)
+    # track game assets
+    players: List[Player]
     cannons: List[Projectile] = field(default_factory=list)
     animations: List[AnimatedSprite] = field(default_factory=list)
 
-    @abstractmethod
-    def _provision_planes(self) -> None:
+    # track game state
+    is_started: bool = False
+
+    def _provision_planes(self) -> List[Plane]:
         '''
-        Define how planes are assigned .plane_id and .starting_pos
-        attributes
+        '''
+        provisioned_planes = []
+
+        planes = [BF109, P51]
+        color_pairs = [1, 2]
+        start_coords = [np.copy(START_COORDS_ONE), np.copy(START_COORDS_TWO)]
+        start_angles = [np.copy(START_ANGLE_ONE), np.copy(START_ANGLE_TWO)]
+
+        for p in planes:
+            provisioned_planes.append(
+                p(
+                    color_pair=color_pairs.pop(0),
+                    coordinates=start_coords.pop(0),
+                    angle_of_attack=start_angles.pop(0),
+                )
+            )
+
+        return provisioned_planes
+
+    @abstractmethod
+    def _provision_players(self) -> None:
+        '''
         '''
 
     @abstractmethod
@@ -69,14 +119,17 @@ class Game(ABC):
         '''
 
         # === update planes ===
-        self.planes = [p for p in self.planes if not p.for_deletion]
-        for plane in self.planes:
-            # read key and update plane state
-            plane.parse_key(key_presses)
-            if plane.fired_cannon:
-                self.cannons.append(plane.fired_cannon.pop(0))
+        for player in self.players:
+            plane = player.plane
+
+            # check if was killed in previous frame
+            if plane.hull_integrity <= 0:
+                self.reset_plane(plane)
 
             # render updated plane state
+            player.parse_key(key_presses)
+            if plane.fired_cannon:
+                self.cannons.append(plane.fired_cannon.pop(0))
             plane.draw(self.screen)
 
             # pass any generated animation to game instance
@@ -84,38 +137,51 @@ class Game(ABC):
                 self.animations.extend(plane.animations)
                 plane.animations = []
 
-            # update info box
-            self.info_box.update(self, key_presses)
-            self.ll_box.update(self)
-            self.lr_box.update(self)
+            # update player info box
+            player.info_box.update(plane)
 
         # === update cannon rounds ===
         self.cannons = [c for c in self.cannons if not c.for_deletion]
         for cannon in self.cannons:
-            cannon.update(self.screen, self.planes)
+            cannon.update(self.screen, [p.plane for p in self.players])
 
         # === play animations ===
         self.animations = [a for a in self.animations if not a.for_deletion]
         for anim in self.animations:
             anim.next_frame(self.screen)
 
+        # === update game info ===
+        self.info_box.update(self, key_presses)
+
     def start_game(self) -> None:
         '''
         Provisions `Planes` and waits for conditions before starting
         the game
         '''
-        self.planes = self._provision_planes()
+        self._provision_players()
 
-        conditions_met = False
-        while not conditions_met:
-            if all(p.ready for p in self.planes):
-                conditions_met = True
+        # conditions_met = False
+        # while not conditions_met:
+        #     if all(p.ready for p in self.players):
+        #         conditions_met = True
 
-    def reset_game(self) -> None:
+        self.is_started = True
+
+    def reset_plane(self, plane: Plane) -> None:
         '''
         Reset state of the game
         '''
-        pass
+        start_coords = [np.copy(START_COORDS_ONE), np.copy(START_COORDS_TWO)]
+        start_angles = [np.copy(START_ANGLE_ONE), np.copy(START_ANGLE_TWO)]
+
+        for i, player in enumerate(self.players):
+            if id(plane) == id(player.plane):
+                plane.hull_integrity = 100
+                plane.gun.rounds_in_chamber = np.copy(plane.gun.capacity)
+                plane.coordinates = start_coords[i]
+                plane.angle_of_attack = start_angles[i]
+            if id(plane) != id(player.plane):
+                player.kills += 1
 
     def close_game(self) -> None:
         pass
@@ -124,23 +190,12 @@ class Game(ABC):
 @dataclass
 class LocalGame(Game):
 
-    def _provision_planes(self) -> List[Plane]:
-        provisioned_planes = []
-
-        start_coords = [START_COORDS_ONE, START_COORDS_TWO]
-        start_angles = [START_ANGLE_ONE, START_ANGLE_TWO]
-        for i, p in enumerate(self.planes, start=1):
-            provisioned_planes.append(
-                p(
-                    plane_id=i,
-                    color_pair=i,
-                    coordinates=start_coords.pop(0),
-                    angle_of_attack=start_angles.pop(0),
-                    ready=True
-                )
-            )
-
-        return provisioned_planes
+    def _provision_players(self) -> None:
+        planes = self._provision_planes()
+        for i, player in enumerate(self.players, start=1):
+            player.player_id = i
+            player.plane = planes.pop(0)
+            player.ready = True
 
     def read_key(self) -> List[KeyPress]:
         key_presses = []
@@ -169,35 +224,22 @@ class NetworkGame(Game):
         port = os.environ['DOGFIGHT_PORT']
         self.client = Client(self.conn_id, host, int(port))
 
-    def _provision_planes(self) -> List[Plane]:
-        provisioned_planes = []
-
+    def _provision_players(self) -> None:
         # TODO: addd timeout
         # ping server and wait until two connections detected
-        self.client.send({self.conn_id: None})
+        planes = self._provision_planes()
 
+        self.client.send({self.conn_id: None})
         while True:
             recv = self.client.receive()
             if recv and len(recv) == 2:
                 uuids = list(recv.keys())
                 uuids.sort()
-
-                color_pairs = [1, 2]
-                start_coords = [START_COORDS_ONE, START_COORDS_TWO]
-                start_angles = [START_ANGLE_ONE, START_ANGLE_TWO]
-
-                for u_id in uuids:
-                    plane = self.planes.pop()
-                    provisioned_planes.append(
-                        plane(
-                            plane_id=u_id,
-                            color_pair=color_pairs.pop(0),
-                            coordinates=start_coords.pop(0),
-                            angle_of_attack=start_angles.pop(0),
-                            ready=True
-                        )
-                    )
-                return provisioned_planes
+                for player in self.players:
+                    player.player_id = uuids.pop(0)
+                    player.plane = planes.pop(0)
+                    player.ready = True
+                break
 
     def read_key(self) -> List[KeyPress]:
         '''
