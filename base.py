@@ -109,13 +109,16 @@ class LowerLeftBox(InfoBox):
     def __post_init__(self):
         self.uly = utils.LRY + 1
         self.ulx = utils.ULX
-        self.lry = utils.LRY + 4
+        self.lry = utils.LRY + 5
         self.lrx = utils.LRX - 1 - utils.ARENA_WIDTH // 2
 
         self.plane_idx: int = 0
 
-    def update(self, plane: Plane) -> None:
+    def update(self, player) -> None:
+        plane = player.plane
+
         messages = {
+            'kills': player.kills,
             'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
             'integrity': plane.hull_integrity / 100
         }
@@ -123,8 +126,12 @@ class LowerLeftBox(InfoBox):
         width = (utils.ARENA_WIDTH // 2) - 1
         for i, m in enumerate(messages.items()):
             bar_width = int(float(m[1]) * int(width * 0.6))
-            key = f'{m[0]: <{int(width * 0.4) - 1}}: '
-            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
+            if m[0] == 'kills':
+                key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+                val = f'{m[1]: <{int(width * 0.6) - 1}}'
+            else:
+                key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+                val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
 
 
@@ -135,13 +142,16 @@ class LowerRightBox(InfoBox):
     def __post_init__(self):
         self.uly = utils.LRY + 1
         self.ulx = utils.ULX + 1 + utils.ARENA_WIDTH // 2
-        self.lry = utils.LRY + 4
+        self.lry = utils.LRY + 5
         self.lrx = utils.LRX
 
         self.plane_idx: int = 1
 
-    def update(self, plane: Plane) -> None:
+    def update(self, player) -> None:
+        plane = player.plane
+
         messages = {
+            'kills': player.kills,
             'ammo': plane.gun.rounds_in_chamber / plane.gun.capacity,
             'integrity': plane.hull_integrity / 100
         }
@@ -149,8 +159,12 @@ class LowerRightBox(InfoBox):
         width = (utils.ARENA_WIDTH // 2) - 1
         for i, m in enumerate(messages.items()):
             bar_width = int(float(m[1]) * int(width * 0.6))
-            key = f'{m[0]: <{int(width * 0.4) - 1}}: '
-            val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
+            if m[0] == 'kills':
+                key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+                val = f'{m[1]: <{int(width * 0.6) - 1}}'
+            else:
+                key = f'{m[0]: <{int(width * 0.4) - 1}}: '
+                val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
 
 

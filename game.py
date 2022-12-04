@@ -138,7 +138,7 @@ class Game(ABC):
                 plane.animations = []
 
             # update player info box
-            player.info_box.update(plane)
+            player.info_box.update(player)
 
         # === update cannon rounds ===
         self.cannons = [c for c in self.cannons if not c.for_deletion]
