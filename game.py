@@ -16,10 +16,10 @@ from utils import KeyPress
 
 # === starting coordinates ===
 START_COORDS_Y = np.float64(ULY + (ARENA_HEIGHT // 2))
-START_COORDS_ONE = np.array((START_COORDS_Y, LRX - (ARENA_WIDTH // 4)))
-START_COORDS_TWO = np.array((START_COORDS_Y, ULX + (ARENA_WIDTH // 4)))
-START_ANGLE_ONE = np.pi * 1/2
-START_ANGLE_TWO = np.pi * -1/2
+START_COORDS_ONE = np.array((START_COORDS_Y, ULX + (ARENA_WIDTH // 4)))
+START_COORDS_TWO = np.array((START_COORDS_Y, LRX - (ARENA_WIDTH // 4)))
+START_ANGLE_ONE = np.pi * -1/2
+START_ANGLE_TWO = np.pi * 1/2
 
 # === keyboard key ordinals ===
 ESC_KEY = 27
@@ -123,7 +123,7 @@ class Game(ABC):
             plane = player.plane
 
             # check if was killed in previous frame
-            if plane.hull_integrity <= 0:
+            if plane.for_deletion:
                 self.reset_plane(plane)
 
             # render updated plane state
@@ -160,10 +160,10 @@ class Game(ABC):
         '''
         self._provision_players()
 
-        # conditions_met = False
-        # while not conditions_met:
-        #     if all(p.ready for p in self.players):
-        #         conditions_met = True
+        conditions_met = False
+        while not conditions_met:
+            if all(p.ready for p in self.players):
+                conditions_met = True
 
         self.is_started = True
 
@@ -180,6 +180,7 @@ class Game(ABC):
                 plane.gun.rounds_in_chamber = np.copy(plane.gun.capacity)
                 plane.coordinates = start_coords[i]
                 plane.angle_of_attack = start_angles[i]
+                plane.for_deletion = False
             if id(plane) != id(player.plane):
                 player.kills += 1
 
@@ -219,9 +220,9 @@ class NetworkGame(Game):
 
     def __post_init__(self) -> None:
         # create client that will connect to Server
-        self.conn_id = str(uuid.uuid4())
         host = os.environ['DOGFIGHT_HOST']
         port = os.environ['DOGFIGHT_PORT']
+        self.conn_id = str(uuid.uuid4())
         self.client = Client(self.conn_id, host, int(port))
 
     def _provision_players(self) -> None:
@@ -243,15 +244,15 @@ class NetworkGame(Game):
 
     def read_key(self) -> List[KeyPress]:
         '''
-        First send "player" key, then receive keys
+        First send "player" key, then receive keys from server
         '''
         key_press = self.screen.getch()
         if key_press == -1:
             key = None
         else:
             key = P_ONE_YOKE.get(key_press, -1)
-        self.client.send({self.conn_id: key})
 
+        self.client.send({self.conn_id: key})
         while True:
             recv = self.client.receive()
             if recv and len(recv) == 2:

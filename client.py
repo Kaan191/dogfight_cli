@@ -1,6 +1,5 @@
 import json
 import logging
-import pathlib
 import socket
 import selectors
 from collections import namedtuple
@@ -8,17 +7,6 @@ from typing import Dict, Optional
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-fh = logging.FileHandler(
-    pathlib.Path(__file__).resolve().parent / 'client.log'
-)
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-formatter.datefmt = '%Y-%m-%d:%H:%M:%S'
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
 
 
 SocketData = namedtuple(

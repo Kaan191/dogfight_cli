@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import curses
+import logging
 import time
 from abc import ABC, abstractmethod
 from curses import textpad
@@ -12,6 +13,8 @@ import numpy as np
 import utils
 from utils import plus_minus, resolve_direction, Window
 from utils import Coordinates, Radian, Scalar
+
+logger = logging.getLogger('dogfight.base')
 
 
 @dataclass
@@ -376,6 +379,9 @@ class Cannon(Projectile):
         hit = False
         for plane in planes:
             if plane.hit_check(self):
+                logger.debug(
+                    f'plane (id={id(self)}) hit by canon at {self.coordinates}'
+                )
                 plane.hull_integrity -= self.damage
                 hit = True
                 self.for_deletion = True
@@ -583,6 +589,9 @@ class Plane(Projectile):
                     curses.color_pair(self.color_pair)
                 )
         else:
+            logger.debug(
+                f'plane (id={id(self)}) destroyed at {self.coordinates}'
+            )
             for i in range(-2, 3):
                 self.animations.append(
                     PlaneExplosion(
