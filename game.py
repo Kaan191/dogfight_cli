@@ -151,7 +151,8 @@ class Game(ABC):
             anim.next_frame(self.screen)
 
         # === update game info ===
-        self.info_box.update(self, key_presses)
+        if self.info_box:
+            self.info_box.update(self, key_presses)
 
     def start_game(self) -> None:
         '''

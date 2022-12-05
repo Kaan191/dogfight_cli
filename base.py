@@ -4,6 +4,7 @@ import curses
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections import namedtuple
 from curses import textpad
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -11,10 +12,11 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 import utils
-from utils import plus_minus, resolve_direction, Window
+from utils import resolve_direction, Window
 from utils import Coordinates, Radian, Scalar
 
 logger = logging.getLogger('dogfight.base')
+BoundaryHit = namedtuple('BoundaryHit', 'top right bottom left')
 
 
 @dataclass
@@ -87,13 +89,16 @@ class TopBox(InfoBox):
         integrity = ', '.join(
             [str(p.plane.hull_integrity) for p in game.players]
         )
+        coords = ', '.join([str(p.plane.resolved_coords) for p in game.players])
         # angle = f'{round(plane.angle_of_attack / np.pi, 1)} * π'
 
         messages = {
             'keys pressed': keys_pressed,
             'cannon in play': str(len(game.cannons)),
-            'animations': str(len(game.animations)),
-            'integrity': integrity
+            # 'animations': str(len(game.animations)),
+            'coords': coords,
+            'boundaries': f'({utils.ULY}, {utils.ULX}), ({utils.LRY}, {utils.LRX})',
+            # 'integrity': integrity
         }
 
         for i, m in enumerate(messages.items()):
@@ -289,20 +294,25 @@ class Projectile:
         elif not up:
             self.angle_of_attack -= self.turning_circle
 
-    def _hit_boundary(self, y: int, x: int) -> Tuple[bool, bool]:
+    def _hit_boundary(self, y: int, x: int) -> BoundaryHit:
         '''
-        Returns a two-tuple of bools denoting if an object is touching
-        the y- or x-axis boundaries of the arena
+        Returns a namedtuple of four bools denoting whether a side of
+        the arena boundary has been hit
         '''
+        hit_top, hit_right, hit_bottom, hit_left = False, False, False, False
 
-        hit_y_boundary, hit_x_boundary = False, False
+        # integers for top, right, bottom, left
+        if y <= utils.ULY:
+            hit_top = True
+        if x >= utils.LRX:
+            hit_right = True
+        if y >= utils.LRY:
+            hit_bottom = True
+        if x <= utils.ULX:
+            hit_left = True
 
-        if y <= utils.ULY or y >= utils.LRY:
-            hit_y_boundary = True
-        if x <= utils.ULX or x >= utils.LRX:
-            hit_x_boundary = True
-
-        return hit_y_boundary, hit_x_boundary
+        bh = BoundaryHit(hit_top, hit_right, hit_bottom, hit_left)
+        return bh
 
     def _react_to_boundary(self) -> Tuple[bool, bool]:
         '''
@@ -316,28 +326,18 @@ class Projectile:
         '''
 
         y, x = self.resolved_coords
-        hit_y, hit_x = self._hit_boundary(y, x)
+        bh = self._hit_boundary(y, x)
         if self.infinite:
-            if hit_y:
-                self.coordinates[0] = (
-                    y +
-                    (
-                        plus_minus(utils.TERM_HEIGHT//2, y) *
-                        utils.ARENA_HEIGHT
-                    ) -
-                    plus_minus(utils.TERM_HEIGHT//2, y)
-                )
-            elif hit_x:
-                self.coordinates[1] = (
-                    x +
-                    (
-                        plus_minus(utils.TERM_WIDTH//2, x) *
-                        utils.ARENA_WIDTH
-                    ) -
-                    plus_minus(utils.TERM_WIDTH//2, x)
-                )
+            if bh.top:
+                self.coordinates[0] += utils.ARENA_HEIGHT
+            if bh.right:
+                self.coordinates[1] -= utils.ARENA_WIDTH
+            if bh.bottom:
+                self.coordinates[0] -= utils.ARENA_HEIGHT
+            if bh.left:
+                self.coordinates[1] += utils.ARENA_WIDTH
         else:
-            if hit_y or hit_x:
+            if any(list(bh)):
                 self.for_deletion = True
 
     def _move(self) -> None:
@@ -394,7 +394,7 @@ class Cannon(Projectile):
         for plane in planes:
             if plane.hit_check(self):
                 logger.debug(
-                    f'plane (id={id(self)}) hit by canon at {self.coordinates}'
+                    f'plane (id={id(plane)}) hit by cannon at ({self.resolved_coords[0] - utils.Y_SHIFT}, {self.resolved_coords[1] - utils.X_SHIFT})'
                 )
                 plane.hull_integrity -= self.damage
                 hit = True
@@ -604,7 +604,7 @@ class Plane(Projectile):
                 )
         else:
             logger.debug(
-                f'plane (id={id(self)}) destroyed at {self.coordinates}'
+                    f'plane (id={id(self)}) destroyed at ({self.resolved_coords[0] - utils.Y_SHIFT}, {self.resolved_coords[1] - utils.X_SHIFT})'
             )
             for i in range(-2, 3):
                 self.animations.append(

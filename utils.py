@@ -35,10 +35,21 @@ ARENA_HEIGHT = 20
 ARENA_WIDTH = 80
 TERM_HEIGHT = os.get_terminal_size().lines
 TERM_WIDTH = os.get_terminal_size().columns
-ULX = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
-ULY = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
-LRX = TERM_WIDTH - ULX
-LRY = TERM_HEIGHT - ULY
+# ULX = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
+# ULY = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
+# LRX = TERM_WIDTH - ULX
+# LRY = TERM_HEIGHT - ULY
+
+# shift
+Y_SHIFT = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
+X_SHIFT = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
+
+# shifted
+ULY = 0 + Y_SHIFT
+ULX = 0 + X_SHIFT
+LRY = ARENA_HEIGHT + Y_SHIFT
+LRX = ARENA_WIDTH + X_SHIFT
+
 
 
 def plus_minus(a, b) -> int:

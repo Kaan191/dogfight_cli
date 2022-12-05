@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import sys
+from configparser import ConfigParser
 
 from base import Arena, TopBox, LowerLeftBox, LowerRightBox, Window
 from game import LocalGame, Player, NetworkGame
@@ -68,6 +69,12 @@ def main(stdscr: Window):
     llbox.draw()
     lrbox = LowerRightBox(stdscr)
     lrbox.draw()
+
+    # add name
+    # cp = ConfigParser()
+    # cp.read()
+
+    # stdscr.addnstr
 
     # create Players
     players = [Player(info_box=llbox), Player(info_box=lrbox)]
