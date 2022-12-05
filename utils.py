@@ -1,16 +1,17 @@
 import curses
 import os
 from collections import namedtuple
-from typing import Any, TYPE_CHECKING
+from typing import Any, List, TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 
 # enables static type hinting of Window object
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from typings.cursestyping import _CursesWindow
     Window = _CursesWindow
 else:
+    NDArray = List
     Window = Any
 
 
@@ -40,7 +41,7 @@ TERM_WIDTH = os.get_terminal_size().columns
 # LRX = TERM_WIDTH - ULX
 # LRY = TERM_HEIGHT - ULY
 
-# shift
+# shift
 Y_SHIFT = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
 X_SHIFT = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
 
@@ -49,7 +50,6 @@ ULY = 0 + Y_SHIFT
 ULX = 0 + X_SHIFT
 LRY = ARENA_HEIGHT + Y_SHIFT
 LRX = ARENA_WIDTH + X_SHIFT
-
 
 
 def plus_minus(a, b) -> int:
