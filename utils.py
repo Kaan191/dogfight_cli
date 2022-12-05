@@ -1,29 +1,23 @@
+from __future__ import annotations
+
+import copy
 import curses
+import math
 import os
 from collections import namedtuple
-from typing import Any, List, TYPE_CHECKING
-
-import numpy as np
+from dataclasses import dataclass
+from typing import Any, Tuple, TYPE_CHECKING, Union
 
 # enables static type hinting of Window object
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
     from typings.cursestyping import _CursesWindow
     Window = _CursesWindow
 else:
-    NDArray = List
     Window = Any
 
 
 # === helper data structures ===
 KeyPress = namedtuple('KeyPress', 'player_id key')
-
-
-# === custom types ===
-Scalar = np.float64
-Radian = np.float64
-Vector = NDArray[np.float64]
-Coordinates = NDArray[np.float64]
 
 
 # === arena dimensions ===
@@ -36,37 +30,71 @@ ARENA_HEIGHT = 20
 ARENA_WIDTH = 80
 TERM_HEIGHT = os.get_terminal_size().lines
 TERM_WIDTH = os.get_terminal_size().columns
-# ULX = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
-# ULY = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
-# LRX = TERM_WIDTH - ULX
-# LRY = TERM_HEIGHT - ULY
 
-# shift
+# x- and y-axis shifts for centring drawn objects
 Y_SHIFT = (TERM_HEIGHT // 2) - (ARENA_HEIGHT // 2)
 X_SHIFT = (TERM_WIDTH // 2) - (ARENA_WIDTH // 2)
 
-# shifted
+# shifted anchor coordinates
 ULY = 0 + Y_SHIFT
 ULX = 0 + X_SHIFT
 LRY = ARENA_HEIGHT + Y_SHIFT
 LRX = ARENA_WIDTH + X_SHIFT
 
 
-def plus_minus(a, b) -> int:
-    '''Returns +1 if a > b, or -1 if a < b'''
+@dataclass
+class Vector:
+    y: float
+    x: float
 
-    return ((float(a) > float(b)) - (float(a) < float(b)))
+    def resolve(self) -> Tuple[int, int]:
+        return round(self.y), round(self.x)
+
+    def __copy__(self):
+        return Vector(copy.copy(self.y), copy.copy(self.x))
+
+    def __round__(self) -> Vector:
+        return Vector(round(self.y), round(self.x))
+
+    def __iter__(self):
+        return iter((self.y, self.x))
+
+    def __getitem__(self, key: slice) -> float:
+        return [self.y, self.x][key]
+
+    def __add__(self, other: Union[int, Vector]) -> Vector:
+        if isinstance(other, Vector):
+            return Vector(self.y + other.y, self.x + other.x)
+        elif isinstance(other, float) or isinstance(other, int):
+            return Vector(self.y + other, self.x + other)
+        else:
+            raise TypeError('can only operate on another Vector')
+
+    def __sub__(self, other: Union[int, Vector]) -> Vector:
+        if isinstance(other, Vector):
+            return Vector(self.y - other.y, self.x - other.x)
+        elif isinstance(other, float) or isinstance(other, int):
+            return Vector(self.y - other, self.x - other)
+        else:
+            raise TypeError('can only operate on another Vector')
+
+    def __mul__(self, other: Union[int, Vector]) -> Vector:
+        if isinstance(other, Vector):
+            return Vector(self.y * other.y, self.x * other.x)
+        elif isinstance(other, float) or isinstance(other, int):
+            return Vector(self.y * other, self.x * other)
+        else:
+            raise TypeError('can only operate on another Vector')
 
 
-def resolve_direction(angle: Radian) -> Vector:
+def resolve_direction(angle: float) -> Vector:
     '''
     Converts a Radian value to a Vector with y- and x-values
     '''
 
-    return np.array([
-        np.round(np.cos(angle), 5),
-        np.round(np.sin(angle), 5)
-    ])
+    y = round(math.cos(angle), 5)
+    x = round(math.sin(angle), 5)
+    return Vector(y, x)
 
 
 def get_char(screen: Window, y: int, x: int) -> str:

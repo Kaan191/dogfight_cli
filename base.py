@@ -5,15 +5,14 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from collections import namedtuple
+from copy import copy
 from curses import textpad
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-import numpy as np
-
 import utils
 from utils import resolve_direction, Window
-from utils import Coordinates, Radian, Scalar
+from utils import Vector
 
 logger = logging.getLogger('dogfight.base')
 BoundaryHit = namedtuple('BoundaryHit', 'top right bottom left')
@@ -86,18 +85,21 @@ class TopBox(InfoBox):
 
     def update(self, game, key_presses) -> None:
         keys_pressed = ', '.join([str(k.key) for k in key_presses])
-        integrity = ', '.join(
-            [str(p.plane.hull_integrity) for p in game.players]
+        # integrity = ', '.join(
+        #     [str(p.plane.hull_integrity) for p in game.players]
+        # )
+        coords = ', '.join(
+            [str(p.plane.resolved_coords) for p in game.players]
         )
-        coords = ', '.join([str(p.plane.resolved_coords) for p in game.players])
-        # angle = f'{round(plane.angle_of_attack / np.pi, 1)} * π'
 
         messages = {
             'keys pressed': keys_pressed,
             'cannon in play': str(len(game.cannons)),
             # 'animations': str(len(game.animations)),
             'coords': coords,
-            'boundaries': f'({utils.ULY}, {utils.ULX}), ({utils.LRY}, {utils.LRX})',
+            'boundaries': (
+                f'({utils.ULY}, {utils.ULX}), ({utils.LRY}, {utils.LRX})'
+            ),
             # 'integrity': integrity
         }
 
@@ -178,9 +180,9 @@ class AnimatedSprite:
     '''
     Define sprite art objects with a `.next_frame` method for animating
     '''
-    coordinates: Coordinates
-    angle_of_attack: Radian = 0
-    speed: Scalar = 0
+    coordinates: Vector
+    angle_of_attack: float = 0
+    speed: float = 0
 
     frames: list = field(init=False)
     colors: list = field(init=False)
@@ -190,11 +192,10 @@ class AnimatedSprite:
     @property
     def resolved_coords(self) -> Tuple[int, int]:
         '''
-        Converts the "real" coordinates stored as `np.float64` into
+        Converts the "real" coordinates stored as `float` into
         rounded integers to place the object on a curses `Window`
         '''
-        y, x = np.rint(self.coordinates).astype(int)
-        return (y, x)
+        return self.coordinates.resolve()
 
     @property
     def inside_arena(self) -> bool:
@@ -265,10 +266,10 @@ class Projectile:
     Planes, Machine Gun and Cannon objects inherit from Projectile
     '''
 
-    coordinates: Coordinates
-    angle_of_attack: Radian
-    turning_circle: Radian
-    speed: Scalar
+    coordinates: Vector
+    angle_of_attack: float
+    turning_circle: float
+    speed: float
 
     body: str
     color: int = 0
@@ -281,11 +282,10 @@ class Projectile:
     @property
     def resolved_coords(self) -> Tuple[int, int]:
         '''
-        Converts the "real" coordinates stored as `np.float64` into
+        Converts the "real" coordinates stored as `float` into
         rounded integers to place the object on a curses `Window`
         '''
-        y, x = np.rint(self.coordinates).astype(int)
-        return (y, x)
+        return self.coordinates.resolve()
 
     def _change_pitch(self, up: bool) -> None:
         ''''''
@@ -329,13 +329,13 @@ class Projectile:
         bh = self._hit_boundary(y, x)
         if self.infinite:
             if bh.top:
-                self.coordinates[0] += utils.ARENA_HEIGHT
+                self.coordinates.y += utils.ARENA_HEIGHT
             if bh.right:
-                self.coordinates[1] -= utils.ARENA_WIDTH
+                self.coordinates.x -= utils.ARENA_WIDTH
             if bh.bottom:
-                self.coordinates[0] -= utils.ARENA_HEIGHT
+                self.coordinates.y -= utils.ARENA_HEIGHT
             if bh.left:
-                self.coordinates[1] += utils.ARENA_WIDTH
+                self.coordinates.x += utils.ARENA_WIDTH
         else:
             if any(list(bh)):
                 self.for_deletion = True
@@ -373,7 +373,7 @@ class Projectile:
         Pass `Coordinates` of another object and return True if equal
         to the resolved coordinates of the `Projectile` instance.
         '''
-        obj_y, obj_x = np.rint(obj.coordinates).astype(int)
+        obj_y, obj_x = obj.coordinates.resolve()
         if self.resolved_coords == (obj_y, obj_x):
             return True
         else:
@@ -382,11 +382,10 @@ class Projectile:
 
 @dataclass
 class Cannon(Projectile):
-    turning_circle: Radian = field(default=0)
-    speed: Scalar = field(default=1.0)
-
+    # configuration
+    turning_circle: float = field(default=0)
+    speed: float = field(default=1.0)
     body: str = '•'
-
     damage: int = 0
 
     def _check_hits(self, planes: List[Plane]) -> bool:
@@ -394,7 +393,9 @@ class Cannon(Projectile):
         for plane in planes:
             if plane.hit_check(self):
                 logger.debug(
-                    f'plane (id={id(plane)}) hit by cannon at ({self.resolved_coords[0] - utils.Y_SHIFT}, {self.resolved_coords[1] - utils.X_SHIFT})'
+                    f'plane (id={id(plane)}) hit by cannon at '
+                    f'({self.resolved_coords[0] - utils.Y_SHIFT}, '
+                    f'{self.resolved_coords[1] - utils.X_SHIFT})'
                 )
                 plane.hull_integrity -= self.damage
                 hit = True
@@ -403,7 +404,7 @@ class Cannon(Projectile):
                 for i in range(-1, 2):
                     plane.animations.append(
                         PlaneExplosion(
-                            coordinates=self.resolved_coords,
+                            coordinates=self.coordinates,
                             angle_of_attack=self.angle_of_attack + (i / 5),
                             speed=self.speed * 0.5
                         )
@@ -441,13 +442,12 @@ class Gun:
     reloading: bool = False
 
     def __post_init__(self):
-
-        self.rounds_in_chamber = np.copy(self.capacity)
+        self.rounds_in_chamber = copy(self.capacity)
 
     def fire(
         self,
-        coordinates: Tuple[int, int],
-        angle_of_attack: Radian
+        coordinates: Vector,
+        angle_of_attack: float
     ) -> Optional[Cannon]:
 
         # store fired cannon in variable
@@ -456,7 +456,7 @@ class Gun:
         # check if gun is reloading; reset gun if reloading complete
         if self.reloading:
             if time.monotonic() - self.last_fired > self.reload_time:
-                self.rounds_in_chamber = np.copy(self.capacity)
+                self.rounds_in_chamber = copy(self.capacity)
                 self.reloading = False
                 self.rounds_in_chamber -= 1
                 c = Cannon(coordinates, angle_of_attack, damage=self.damage)
@@ -478,7 +478,7 @@ class Plane(Projectile):
     '''
     Describes a Plane object
 
-    direction is a two-item ``np.ndarray`` that contains numbers between
+    direction is a `Vector` that contains numbers between
     -1 and 1. Going "up" would be represented by the first item (Y) at 1
     and the second itme (X) at 0. Going "down", the first item would be -1.
     Traveling "right" would have the first item (Y) at 0 and the second (X)
@@ -492,7 +492,7 @@ class Plane(Projectile):
 
     body: str = '+'
     nose: str = field(init=False)
-    nose_coords: Tuple[int, int] = field(init=False)
+    nose_coords: Vector = field(init=False)
 
     infinite: bool = True
 
@@ -505,10 +505,11 @@ class Plane(Projectile):
         curses.init_pair(self.color_pair, self.color, -1)
 
         # resolve nose coordinates and draw
-        self.nose_coords = tuple(
-            self.resolved_coords +
-            np.rint(resolve_direction(self.angle_of_attack))
+        _nc = (
+            round(self.coordinates) +
+            round(resolve_direction(self.angle_of_attack))
         )
+        self.nose_coords = Vector(*_nc)
         self._render_nose()
 
     def _render_nose(self) -> None:
@@ -518,7 +519,7 @@ class Plane(Projectile):
                                \  |  /
 
         '''
-        y, x = np.rint(resolve_direction(self.angle_of_attack))
+        y, x = resolve_direction(self.angle_of_attack).resolve()
 
         if y == 0:
             self.nose = '-'
@@ -544,12 +545,12 @@ class Plane(Projectile):
         '''
 
         # cannon starting position just ahead of the plane's nose
-        start_coords = np.copy(
-            self.nose_coords +
-            np.rint(resolve_direction(self.angle_of_attack))
+        _nc = (
+            round(self.coordinates) +
+            round(resolve_direction(self.angle_of_attack)) +
+            round(resolve_direction(self.angle_of_attack))
         )
-
-        c = self.gun.fire(start_coords, np.copy(self.angle_of_attack))
+        c = self.gun.fire(copy(_nc), copy(self.angle_of_attack))
         if c:
             return c
 
@@ -559,9 +560,9 @@ class Plane(Projectile):
         super()._move()
 
         # extend base class to also adjust coordinates of "nose"
-        self.nose_coords = tuple(
-            self.resolved_coords +
-            np.rint(resolve_direction(self.angle_of_attack))
+        self.nose_coords = (
+            round(self.coordinates) +
+            round(resolve_direction(self.angle_of_attack))
         )
         self._render_nose()
 
@@ -572,7 +573,7 @@ class Plane(Projectile):
         if not any(self._hit_boundary(*self.resolved_coords)):
             screen.addch(*self.resolved_coords, ' ')
         if not any(self._hit_boundary(*self.nose_coords)):
-            screen.addch(*np.rint(self.nose_coords).astype(int), ' ')
+            screen.addch(*self.nose_coords.resolve(), ' ')
 
         # create `PlaneSmoke` instance prior to move if hull integrity
         # below threshold
@@ -582,7 +583,7 @@ class Plane(Projectile):
                 if a.resolved_coords == self.resolved_coords
             ]
             if not anims_at_coords:
-                self.animations.append(PlaneSmoke(self.resolved_coords))
+                self.animations.append(PlaneSmoke(self.coordinates))
 
         # move plane to new position
         self._move()
@@ -598,18 +599,20 @@ class Plane(Projectile):
                 )
             if not any(self._hit_boundary(*self.nose_coords)):
                 screen.addch(
-                    *np.rint(self.nose_coords).astype(int),
+                    *self.nose_coords.resolve(),
                     self.nose,
                     curses.color_pair(self.color_pair)
                 )
         else:
             logger.debug(
-                    f'plane (id={id(self)}) destroyed at ({self.resolved_coords[0] - utils.Y_SHIFT}, {self.resolved_coords[1] - utils.X_SHIFT})'
+                f'plane (id={id(self)}) destroyed at '
+                f'({self.resolved_coords[0] - utils.Y_SHIFT}, '
+                f'{self.resolved_coords[1] - utils.X_SHIFT})'
             )
             for i in range(-2, 3):
                 self.animations.append(
                     PlaneExplosion(
-                        coordinates=self.resolved_coords,
+                        coordinates=self.coordinates,
                         angle_of_attack=self.angle_of_attack + (i / 3),
                         speed=self.speed * 0.7
                     )

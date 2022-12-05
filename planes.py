@@ -1,6 +1,5 @@
+import math
 from functools import partial
-
-import numpy as np
 
 from base import Gun, Plane
 
@@ -15,7 +14,7 @@ P51 = partial(
     Plane,
     color=1,
     speed=0.3,
-    turning_circle=(np.pi * 1/8),
+    turning_circle=(math.pi * 1/8),
     gun=Gun(5, 3, 20)
 )
 
@@ -24,6 +23,6 @@ BF109 = partial(
     Plane,
     color=3,
     speed=0.3,
-    turning_circle=(np.pi * 1/8),
+    turning_circle=(math.pi * 1/8),
     gun=Gun(5, 3, 20)
 )

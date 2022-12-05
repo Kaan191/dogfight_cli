@@ -1,25 +1,25 @@
 import curses
+import math
 import os
 import uuid
 from abc import ABC, abstractmethod
+from copy import copy
 from dataclasses import dataclass, field
 from typing import List
-
-import numpy as np
 
 from base import InfoBox, TopBox, Window
 from base import AnimatedSprite, Plane, Projectile
 from client import Client
 from planes import BF109, P51
 from utils import ARENA_HEIGHT, ARENA_WIDTH, LRX, ULX, ULY
-from utils import KeyPress
+from utils import KeyPress, Vector
 
 # === starting coordinates ===
-START_COORDS_Y = np.float64(ULY + (ARENA_HEIGHT // 2))
-START_COORDS_ONE = np.array((START_COORDS_Y, ULX + (ARENA_WIDTH // 4)))
-START_COORDS_TWO = np.array((START_COORDS_Y, LRX - (ARENA_WIDTH // 4)))
-START_ANGLE_ONE = np.pi * -1/2
-START_ANGLE_TWO = np.pi * 1/2
+START_COORDS_Y = ULY + (ARENA_HEIGHT // 2)
+START_COORDS_ONE = Vector(START_COORDS_Y, ULX + (ARENA_WIDTH // 4))
+START_COORDS_TWO = Vector(START_COORDS_Y, LRX - (ARENA_WIDTH // 4))
+START_ANGLE_ONE = math.pi * -1/2
+START_ANGLE_TWO = math.pi * 1/2
 
 # === keyboard key ordinals ===
 ESC_KEY = 27
@@ -86,8 +86,8 @@ class Game(ABC):
 
         planes = [BF109, P51]
         color_pairs = [1, 2]
-        start_coords = [np.copy(START_COORDS_ONE), np.copy(START_COORDS_TWO)]
-        start_angles = [np.copy(START_ANGLE_ONE), np.copy(START_ANGLE_TWO)]
+        start_coords = [copy(START_COORDS_ONE), copy(START_COORDS_TWO)]
+        start_angles = [copy(START_ANGLE_ONE), copy(START_ANGLE_TWO)]
 
         for p in planes:
             provisioned_planes.append(
@@ -172,13 +172,13 @@ class Game(ABC):
         '''
         Reset state of the game
         '''
-        start_coords = [np.copy(START_COORDS_ONE), np.copy(START_COORDS_TWO)]
-        start_angles = [np.copy(START_ANGLE_ONE), np.copy(START_ANGLE_TWO)]
+        start_coords = [copy(START_COORDS_ONE), copy(START_COORDS_TWO)]
+        start_angles = [copy(START_ANGLE_ONE), copy(START_ANGLE_TWO)]
 
         for i, player in enumerate(self.players):
             if id(plane) == id(player.plane):
                 plane.hull_integrity = 100
-                plane.gun.rounds_in_chamber = np.copy(plane.gun.capacity)
+                plane.gun.rounds_in_chamber = copy(plane.gun.capacity)
                 plane.coordinates = start_coords[i]
                 plane.angle_of_attack = start_angles[i]
                 plane.for_deletion = False
