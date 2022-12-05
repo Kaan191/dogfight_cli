@@ -394,8 +394,8 @@ class Cannon(Projectile):
             if plane.hit_check(self):
                 logger.debug(
                     f'plane (id={id(plane)}) hit by cannon at '
-                    f'({self.resolved_coords[0] - utils.Y_SHIFT}, '
-                    f'{self.resolved_coords[1] - utils.X_SHIFT})'
+                    f'({self.resolved_coords.y - utils.Y_SHIFT}, '
+                    f'{self.resolved_coords.x - utils.X_SHIFT})'
                 )
                 plane.hull_integrity -= self.damage
                 hit = True
@@ -606,8 +606,8 @@ class Plane(Projectile):
         else:
             logger.debug(
                 f'plane (id={id(self)}) destroyed at '
-                f'({self.resolved_coords[0] - utils.Y_SHIFT}, '
-                f'{self.resolved_coords[1] - utils.X_SHIFT})'
+                f'({self.resolved_coords.y - utils.Y_SHIFT}, '
+                f'{self.resolved_coords.x - utils.X_SHIFT})'
             )
             for i in range(-2, 3):
                 self.animations.append(
