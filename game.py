@@ -185,7 +185,8 @@ class Game(ABC):
                 plane.coordinates = start_coords[i]
                 plane.angle_of_attack = start_angles[i]
                 plane.for_deletion = False
-                plane.gun.reload_chamber(force=True)
+                if plane.gun.is_reloading:
+                    plane.gun.reload_chamber(force=True)
             if id(plane) != id(player.plane):
                 player.kills += 1
 

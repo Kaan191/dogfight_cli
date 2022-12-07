@@ -298,7 +298,7 @@ class Projectile:
     infinite: bool = False
 
     # configuration for appearance
-    body: str
+    body: str = ''
     color: int = 0
 
     # tracking state
