@@ -5,16 +5,16 @@ import logging
 import os
 import pathlib
 import sys
-from configparser import ConfigParser
 
 from base import Arena, TopBox, LowerLeftBox, LowerRightBox, Window
 from game import LocalGame, Player, NetworkGame
-
+from menu import StartMenu
 
 # set env variable so that xterm can show ACS_* curses characters
 os.environ['NCURSES_NO_UTF8_ACS'] = '1'
 os.environ['DOGFIGHT_LOCAL'] = '1'
 os.environ['DOGFIGHT_LOGGING'] = '0'
+os.environ['DOGFIGHT_DEBUG'] = '0'
 
 
 def init_logger(logging_on: bool = False) -> logging.Logger:
@@ -45,9 +45,9 @@ def init_logger(logging_on: bool = False) -> logging.Logger:
 
 
 def main(stdscr: Window):
-    # initial settings
+    # initial curses settings
     curses.use_default_colors()
-    curses.curs_set(0)  # stops blinking cursor
+    curses.curs_set(0)  # hides cursor
     stdscr.nodelay(1)   #
     stdscr.timeout(30)  # controls refresh rate
 
@@ -58,33 +58,37 @@ def main(stdscr: Window):
     else:
         logger = init_logger(False)
 
-    # create arena
+    # draw arena boundary
     arena = Arena(stdscr)
     arena.draw()
 
-    # create dynamic info box above and below arena
-    debug_box = TopBox(stdscr)
-    debug_box.draw()
+    # configure game with interactive menu and return settings dict
+    start_menu = StartMenu(stdscr)
+    settings = start_menu.open_menu()
+    if settings['game_type'] == 'Local':
+        game_class = LocalGame
+    elif settings['game_type'] == 'Network':
+        game_class = NetworkGame
+
+    # redraw fresh arena
+    arena.draw()
+
+    # create dynamic info boxes
+    if os.environ['DOGFIGHT_DEBUG'] == '1':
+        debug_box = TopBox(stdscr)
+        debug_box.draw()
+    else:
+        debug_box = None
     llbox = LowerLeftBox(stdscr)
     llbox.draw()
     lrbox = LowerRightBox(stdscr)
     lrbox.draw()
 
-    # add name
-    # cp = ConfigParser()
-    # cp.read()
-
-    # stdscr.addnstr
-
     # create Players
     players = [Player(info_box=llbox), Player(info_box=lrbox)]
 
     # create Game
-    if os.environ['DOGFIGHT_LOCAL'] == '1':
-        game = LocalGame(stdscr, debug_box, players)
-    else:
-        game = NetworkGame(stdscr, debug_box, players)
-
+    game = game_class(stdscr, debug_box, settings, players)
     while True:
         try:
             if not game.is_started:
@@ -94,31 +98,26 @@ def main(stdscr: Window):
             game.next_frame(key_presses)
             stdscr.refresh()
         except KeyboardInterrupt:
-            print('Exiting game...')
             game.close_game()
-            sys.exit(1)
+            sys.exit(
+                f'Closed game... '
+                f'({players[0].callsign}) {players[0].kills}:'
+                f'{players[1].kills} ({players[1].callsign})'
+            )
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-n', '--network', action='store_true', help='flag for network game'
+        '-L', '--logging', action='store_true', help='enable logging'
     )
     parser.add_argument(
-        '-H', '--host', help='IP address of server'
-    )
-    parser.add_argument(
-        '-P', '--port', default='51515', help='port of server'
-    )
-    parser.add_argument(
-        '-L', '--logging', action='store_true', help='port of server'
+        '-D', '--debug', action='store_true', help='enable debug info box'
     )
     args = parser.parse_args()
-    if args.network:
-        os.environ['DOGFIGHT_LOCAL'] = '0'
-        os.environ['DOGFIGHT_HOST'] = args.host
-        os.environ['DOGFIGHT_PORT'] = args.port
     if args.logging:
         os.environ['DOGFIGHT_LOGGING'] = '1'
+    if args.debug:
+        os.environ['DOGFIGHT_DEBUG'] = '1'
 
     curses.wrapper(main)

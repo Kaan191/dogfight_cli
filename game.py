@@ -1,6 +1,5 @@
 import curses
 import math
-import os
 import uuid
 from abc import ABC, abstractmethod
 from copy import copy
@@ -20,8 +19,11 @@ START_COORDS_ONE = Vector(START_COORDS_Y, ULX + (ARENA_WIDTH // 4))
 START_COORDS_TWO = Vector(START_COORDS_Y, LRX - (ARENA_WIDTH // 4))
 START_ANGLE_ONE = math.pi * -1/2
 START_ANGLE_TWO = math.pi * 1/2
+CALLSIGN_ONE = Vector(ULY, ULX + 2)
+CALLSIGN_TWO = Vector(ULY, LRX - 22)
 
 # === keyboard key ordinals ===
+ENTER_KEY = 10
 ESC_KEY = 27
 SPACE_KEY = 32
 
@@ -41,6 +43,7 @@ P_TWO_YOKE = {
 @dataclass
 class Player:
     player_id: str = None
+    callsign: str = None
 
     conn: Client = None
     plane: Plane = None
@@ -69,9 +72,12 @@ class Player:
 class Game(ABC):
     # curses items
     screen: Window
-    info_box: TopBox
+    debug_box: TopBox
 
-    # track game assets
+    # config
+    settings: dict
+
+    # game assets
     players: List[Player]
     cannons: List[Projectile] = field(default_factory=list)
     animations: List[AnimatedSprite] = field(default_factory=list)
@@ -104,6 +110,27 @@ class Game(ABC):
     def _provision_players(self) -> None:
         '''
         '''
+
+    def _draw_player_names(self) -> None:
+        '''
+        Draw callsigns on top arena border.
+
+        For `NetworkGame`, because the method is called after the `Player`
+        objects have been provisioned, the order of the planes has
+        already been correctly configured.
+        '''
+
+        callsign_coords = [CALLSIGN_ONE, CALLSIGN_TWO]
+        justify = ['left', 'right']
+        for player in self.players:
+            _cs = ' ' + player.callsign + ' '
+            _cc = callsign_coords.pop(0)
+            _j = justify.pop(0)
+            if _j == 'left':
+                _csf = f'{_cs:─<20}'
+            elif _j == 'right':
+                _csf = f'{_cs:─>20}'
+            self.screen.addstr(*_cc, _csf)
 
     @abstractmethod
     def read_key(self) -> KeyPress:
@@ -151,8 +178,8 @@ class Game(ABC):
             anim.next_frame(self.screen)
 
         # === update game info ===
-        if self.info_box:
-            self.info_box.update(self, key_presses)
+        if self.debug_box:
+            self.debug_box.update(self, key_presses)
 
     def start_game(self) -> None:
         '''
@@ -193,11 +220,21 @@ class Game(ABC):
 class LocalGame(Game):
 
     def _provision_players(self) -> None:
+        # get callsign information
+        callsigns = [
+            self.settings['player_1_callsign'],
+            self.settings['player_2_callsign']
+        ]
         planes = self._provision_planes()
+
         for i, player in enumerate(self.players, start=1):
+            # bind plane to player and bring to "ready" state
             player.player_id = i
+            player.callsign = callsigns.pop(0)
             player.plane = planes.pop(0)
             player.ready = True
+
+        self._draw_player_names()
 
     def read_key(self) -> List[KeyPress]:
         key_presses = []
@@ -221,26 +258,35 @@ class NetworkGame(Game):
 
     def __post_init__(self) -> None:
         # create client that will connect to Server
-        host = os.environ['DOGFIGHT_HOST']
-        port = os.environ['DOGFIGHT_PORT']
+        host = self.settings['host_ip']
+        port = self.settings['host_port']
         self.conn_id = str(uuid.uuid4())
         self.client = Client(self.conn_id, host, int(port))
 
     def _provision_players(self) -> None:
         # TODO: addd timeout
         # ping server and wait until two connections detected
+        callsign = {'callsign': self.settings['player_1_callsign']}
         planes = self._provision_planes()
 
-        self.client.send({self.conn_id: None})
+        self.client.send({self.conn_id: callsign})
         while True:
             recv = self.client.receive()
             if recv and len(recv) == 2:
-                uuids = list(recv.keys())
-                uuids.sort()
+                # sort uuids so clients provision players in same order
+                uuids_and_callsigns = [
+                    (k, v['callsign']) for k, v in recv.items()
+                ]
+                uuids_and_callsigns.sort(key=lambda i: i[0])
+                uuids = [uc[0] for uc in uuids_and_callsigns]
+                callsigns = [uc[1] for uc in uuids_and_callsigns]
                 for player in self.players:
                     player.player_id = uuids.pop(0)
+                    player.callsign = callsigns.pop(0)
                     player.plane = planes.pop(0)
                     player.ready = True
+
+                self._draw_player_names()
                 break
 
     def read_key(self) -> List[KeyPress]:
