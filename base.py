@@ -418,6 +418,7 @@ class Cannon(Projectile):
         hit = False
         for plane in planes:
             if plane.hit_check(self):
+                curses.beep()
                 logger.debug(
                     f'plane (id={id(plane)}) hit by cannon at '
                     f'({self.resolved_coords[0] - utils.Y_SHIFT}, '
