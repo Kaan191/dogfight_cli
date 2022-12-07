@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import utils
+from client import Client
 from utils import resolve_direction, Window
-from utils import Vector
+from utils import KeyPress, Vector
 
 logger = logging.getLogger('dogfight.base')
 BoundaryHit = namedtuple('BoundaryHit', 'top right bottom left')
@@ -59,13 +60,16 @@ class InfoBox(ABC):
             lrx=self.lrx
         )
 
-    def _write(self, msg: str, line: int) -> None:
+    def _write(self, msg: str, line: int, attr: Optional[int] = None) -> None:
         '''
         Helper function to control placement of messages
         '''
         textbox_top = self.uly + 1
         textbox_left = self.ulx + 1
-        self.stdscr.addstr(textbox_top + line, textbox_left, msg)
+        if attr:
+            self.stdscr.addstr(textbox_top + line, textbox_left, msg, attr)
+        else:
+            self.stdscr.addstr(textbox_top + line, textbox_left, msg)
 
     @abstractmethod
     def update(self, game, *kwargs) -> None:
@@ -121,8 +125,9 @@ class LowerLeftBox(InfoBox):
 
         self.plane_idx: int = 0
 
-    def update(self, player) -> None:
+    def update(self, player: Player) -> None:
         plane = player.plane
+        gun = plane.gun
 
         messages = {
             'kills': player.kills,
@@ -140,6 +145,15 @@ class LowerLeftBox(InfoBox):
                 key = f'{m[0]: <{int(width * 0.4) - 1}}: '
                 val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
+
+        # special overwrite if gun is reloading
+        if gun.is_reloading:
+            ammo_idx = list(messages.keys()).index('ammo')
+            self._write(
+                f'{"ammo": <{int(width * 0.4) - 1}}: reloading...',
+                line=ammo_idx,
+                attr=curses.A_BLINK
+            )
 
 
 @dataclass
@@ -156,6 +170,7 @@ class LowerRightBox(InfoBox):
 
     def update(self, player) -> None:
         plane = player.plane
+        gun = plane.gun
 
         messages = {
             'kills': player.kills,
@@ -173,6 +188,15 @@ class LowerRightBox(InfoBox):
                 key = f'{m[0]: <{int(width * 0.4) - 1}}: '
                 val = f'{"|" * (bar_width - 1): <{int(width * 0.6) - 1}}'
             self._write(key + val, line=i)
+
+        # special overwrite if gun is reloading
+        if gun.is_reloading:
+            ammo_idx = list(messages.keys()).index('ammo')
+            self._write(
+                f'{"ammo": <{int(width * 0.4) - 1}}: reloading...',
+                line=ammo_idx,
+                attr=curses.A_BLINK
+            )
 
 
 @dataclass
@@ -266,17 +290,19 @@ class Projectile:
     Planes, Machine Gun and Cannon objects inherit from Projectile
     '''
 
+    # configuration for motion
     coordinates: Vector
     angle_of_attack: float
     turning_circle: float
     speed: float
+    infinite: bool = False
 
+    # configuration for appearance
     body: str
     color: int = 0
 
-    infinite: bool = False
+    # tracking state
     animations: List[AnimatedSprite] = field(default_factory=list)
-
     for_deletion: bool = False
 
     @property
@@ -438,29 +464,36 @@ class Gun:
 
     # gun state
     rounds_in_chamber: int = field(init=False)
-    last_fired: Optional[int] = None
-    reloading: bool = False
+    last_fired: Optional[float] = None
+    is_reloading: bool = False
 
     def __post_init__(self):
         self.rounds_in_chamber = copy(self.capacity)
+
+    def reload_chamber(self, force: bool = False) -> None:
+        '''
+        Call to reload gun chamber with capacity. Has option to "force"
+        a reload, e.g. called when plane is destroyed.
+        '''
+        time_elapsed = time.monotonic() - self.last_fired > self.reload_time
+        if time_elapsed or force:
+            self.rounds_in_chamber = copy(self.capacity)
+            self.is_reloading = False
 
     def fire(
         self,
         coordinates: Vector,
         angle_of_attack: float
     ) -> Optional[Cannon]:
+        '''
+        Call to create a `Cannon` object and update state of `Gun`
+        '''
 
         # store fired cannon in variable
         c = None
 
-        # check if gun is reloading; reset gun if reloading complete
-        if self.reloading:
-            if time.monotonic() - self.last_fired > self.reload_time:
-                self.rounds_in_chamber = copy(self.capacity)
-                self.reloading = False
-                self.rounds_in_chamber -= 1
-                c = Cannon(coordinates, angle_of_attack, damage=self.damage)
-        else:
+        # check if gun is reloading
+        if not self.is_reloading:
             self.rounds_in_chamber -= 1
             c = Cannon(coordinates, angle_of_attack, damage=self.damage)
 
@@ -469,7 +502,7 @@ class Gun:
         if c:
             if self.rounds_in_chamber == 0:
                 self.last_fired = time.monotonic()
-                self.reloading = True
+                self.is_reloading = True
             return c
 
 
@@ -618,3 +651,34 @@ class Plane(Projectile):
                     )
                 )
             self.for_deletion = True
+
+
+@dataclass
+class Player:
+    # player config
+    player_id: str = None
+    callsign: str = None
+
+    # player-bound objects
+    conn: Client = None
+    plane: Plane = None
+    info_box: InfoBox = None
+
+    # player state
+    kills: int = 0
+    ready: bool = False
+
+    def parse_key(self, key_presses: List[KeyPress]) -> None:
+        '''
+        '''
+        for k in key_presses:
+            if k.player_id == self.player_id:
+                key = k.key
+                # isolate navigation controls
+                if key in ['up', 'down']:
+                    self.plane._change_pitch(up=key == 'up')
+                # ...otherwise fire cannon
+                if key == 'shoot':
+                    cannon_round = self.plane._fire_cannon()
+                    if cannon_round:
+                        self.plane.fired_cannon.append(cannon_round)

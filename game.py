@@ -6,8 +6,8 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List
 
-from base import InfoBox, TopBox, Window
-from base import AnimatedSprite, Plane, Projectile
+from base import TopBox, Window
+from base import AnimatedSprite, Plane, Player, Projectile
 from client import Client
 from planes import BF109, P51
 from utils import ARENA_HEIGHT, ARENA_WIDTH, LRX, ULX, ULY
@@ -38,34 +38,6 @@ P_TWO_YOKE = {
     ord('s'): 'down',
     ord('d'): 'shoot'
 }
-
-
-@dataclass
-class Player:
-    player_id: str = None
-    callsign: str = None
-
-    conn: Client = None
-    plane: Plane = None
-    info_box: InfoBox = None
-
-    kills: int = 0
-    ready: bool = False
-
-    def parse_key(self, key_presses: List[KeyPress]) -> None:
-        '''
-        '''
-        for k in key_presses:
-            if k.player_id == self.player_id:
-                key = k.key
-                # isolate navigation controls
-                if key in ['up', 'down']:
-                    self.plane._change_pitch(up=key == 'up')
-                # ...otherwise fire cannon
-                if key == 'shoot':
-                    cannon_round = self.plane._fire_cannon()
-                    if cannon_round:
-                        self.plane.fired_cannon.append(cannon_round)
 
 
 @dataclass
@@ -159,6 +131,10 @@ class Game(ABC):
                 self.cannons.append(plane.fired_cannon.pop(0))
             plane.draw(self.screen)
 
+            # update state of gun
+            if plane.gun.is_reloading:
+                plane.gun.reload_chamber()
+
             # pass any generated animation to game instance
             if plane.animations:
                 self.animations.extend(plane.animations)
@@ -197,7 +173,7 @@ class Game(ABC):
 
     def reset_plane(self, plane: Plane) -> None:
         '''
-        Reset state of the game
+        Reset state of plane
         '''
         start_coords = [copy(START_COORDS_ONE), copy(START_COORDS_TWO)]
         start_angles = [copy(START_ANGLE_ONE), copy(START_ANGLE_TWO)]
@@ -209,6 +185,7 @@ class Game(ABC):
                 plane.coordinates = start_coords[i]
                 plane.angle_of_attack = start_angles[i]
                 plane.for_deletion = False
+                plane.gun.reload_chamber(force=True)
             if id(plane) != id(player.plane):
                 player.kills += 1
 
