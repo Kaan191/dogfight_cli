@@ -245,7 +245,28 @@ class NetworkGame(Game):
         port = self.settings['host_port']
         self.conn_id = str(uuid.uuid4())
         self.client = Client(self.conn_id, host, int(port))
+
+        # initialise ping reading
         self.last_ping = time.monotonic()
+        self._update_ping()
+
+    def _update_ping(self, send_time: float = None) -> None:
+        '''
+        Helper function to display "ping" of messages to server in
+        milliseconds in lower-right corner of `Arena`.
+
+        Logic ensures ping is updated every 2 seconds.
+        '''
+        msg = ' ping: ---ms '
+        if send_time:
+            if int(send_time) % 2 == 0 and send_time - self.last_ping > 1:
+                recv_time = time.monotonic()
+                recv_ms = int((recv_time - send_time) * 1000)
+                msg = f' ping:{recv_ms:>4}ms '
+                self.last_ping = recv_time
+                self.screen.addstr(LRY, LRX - 14, msg)
+        else:
+            self.screen.addstr(LRY, LRX - 14, msg)
 
     def _provision_players(self) -> None:
         # TODO: addd timeout
@@ -291,12 +312,7 @@ class NetworkGame(Game):
         while True:
             recv = self.client.receive()
             if recv and len(recv) == 2:
-                if int(send_time) % 2 == 0 and send_time - self.last_ping > 1:
-                    recv_time = time.monotonic()
-                    recv_ms = int((recv_time - send_time) * 1000)
-                    ping = f'{recv_ms:>4}'
-                    self.screen.addstr(LRY, LRX - 13, f'ping:{ping}ms')
-                    self.last_ping = recv_time
+                self._update_ping(send_time)
                 return [KeyPress(p_id, k) for p_id, k in recv.items()]
 
     def close_game(self) -> None:
