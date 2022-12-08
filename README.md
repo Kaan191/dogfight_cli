@@ -1,4 +1,4 @@
-# About
+# About
 
 `dogfight-cli` is a cross-platform terminal-based Python game using the `curses` library. The game hopes to recreate the joy I experienced playing Super Dogfight on the Commodore64.
 
@@ -8,7 +8,7 @@ The game uses the `socket` library to allow for multiplayer games over a network
 
 No extra dependencies are required. The game has been tested on `python 3.8`.
 
-# Installation
+# Installation
 
 Clone the git repository.
 
@@ -24,7 +24,7 @@ python3 server.py <your.ip.address> <port>
 
 Run `ifconfig` (or `ipconfig`) to find out your local network or internet IP addresses.
 
-# Instructions
+# Instructions
 
 The start menu allows you to choose your game type (Local or Network).
 
